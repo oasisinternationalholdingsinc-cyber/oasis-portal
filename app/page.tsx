@@ -1,65 +1,281 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+
+function normalizeUrl(url?: string | null) {
+  if (!url) return null;
+  return url.replace(/\/+$/, "");
+}
+
+const LEDGER_URL = normalizeUrl(process.env.NEXT_PUBLIC_LEDGER_APP_URL);
+const RE_URL = normalizeUrl(process.env.NEXT_PUBLIC_REAL_ESTATE_APP_URL);
+const LOUNGE_URL = normalizeUrl(process.env.NEXT_PUBLIC_LOUNGE_APP_URL);
+
+const AXIOM_URL =
+  normalizeUrl(process.env.NEXT_PUBLIC_AXIOM_APP_URL) ||
+  normalizeUrl(process.env.NEXT_PUBLIC_AXOOM_APP_URL) ||
+  "/axiom";
+
+const HOLDINGS_URL = "https://oasisintlholdings.com";
+
+// Public Authority Gateway sovereign surfaces (keep separate)
+const VERIFY_URL = "https://sign.oasisintlholdings.com/verify.html";
+const CERTIFICATE_URL = "https://sign.oasisintlholdings.com/certificate.html";
+const SIGN_URL = "https://sign.oasisintlholdings.com/sign.html";
+
+// Portal onboarding surface (your new platform)
+const ONBOARDING_URL =
+  normalizeUrl(process.env.NEXT_PUBLIC_ONBOARDING_APP_URL) ||
+  normalizeUrl(process.env.NEXT_PUBLIC_PORTAL_APP_URL) ||
+  "https://portal.oasisintlholdings.com";
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function useClock() {
+  const [now, setNow] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
+function useHeaderEngagement() {
+  const [t, setT] = useState(0); // 0..1
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY || 0;
+      // Engage within first ~140px, fully engaged by ~320px
+      const start = 140;
+      const end = 320;
+      const raw = (y - start) / (end - start);
+      setT(Math.max(0, Math.min(1, raw)));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  return t;
+}
+
+function Tile({
+  title,
+  subtitle,
+  description,
+  href,
+  external,
+  disabled,
+  badge,
+}: {
+  title: string;
+  subtitle: string;
+  description: string;
+  href?: string | null;
+  external?: boolean;
+  disabled?: boolean;
+  badge?: string;
+}) {
+  const base =
+    "group rounded-2xl border border-zinc-800 bg-zinc-950/40 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition";
+  const hover = disabled
+    ? "opacity-50 cursor-not-allowed"
+    : "hover:border-amber-400/60 hover:shadow-[0_0_0_1px_rgba(250,204,21,0.35),0_18px_60px_rgba(0,0,0,0.65)]";
+
+  const inner = (
+    <div className={`${base} ${hover}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
+            {subtitle}
+          </div>
+          <div className="mt-2 text-xl font-semibold text-zinc-100">
+            {title}
+          </div>
+        </div>
+
+        {badge ? (
+          <div className="rounded-full border border-zinc-700 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-300">
+            {badge}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-3 text-sm leading-6 text-zinc-300/90">
+        {description}
+      </div>
+
+      <div className="mt-5">
+        <div
+          className={[
+            "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold",
+            disabled
+              ? "border border-zinc-800 bg-zinc-900/30 text-zinc-500"
+              : "bg-amber-300 text-zinc-900 hover:bg-amber-200",
+          ].join(" ")}
+        >
+          {disabled ? "Offline" : external ? "Open" : "Enter"}
+        </div>
+
+        {!disabled ? (
+          <div className="mt-2 text-[11px] text-zinc-500">
+            {external ? "Opens in a new tab" : "Opens inside Oasis-OS"}
+          </div>
+        ) : (
+          <div className="mt-2 text-[11px] text-zinc-500">Coming online</div>
+        )}
+      </div>
+    </div>
+  );
+
+  if (disabled) return inner;
+
+  if (external) {
+    return (
+      <a href={href ?? "#"} target="_blank" rel="noreferrer">
+        {inner}
+      </a>
+    );
+  }
+
+  return <Link href={href ?? "/"}>{inner}</Link>;
+}
+
+export default function Launchpad() {
+  const now = useClock();
+  const t = useHeaderEngagement();
+
+  const clock = useMemo(() => {
+    const h = pad2(now.getHours());
+    const m = pad2(now.getMinutes());
+    const s = pad2(now.getSeconds());
+    return `${h}:${m}:${s}`;
+  }, [now]);
+
+  const headerStyle = useMemo(() => {
+    const bg = `rgba(2, 6, 23, ${0.35 + t * 0.45})`;
+    const border = `rgba(255,255,255, ${0.06 + t * 0.10})`;
+    const blur = 10 + t * 10;
+    return {
+      background: bg,
+      borderBottomColor: border,
+      backdropFilter: `blur(${blur}px)`,
+    } as React.CSSProperties;
+  }, [t]);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#020c24_0%,_#020617_45%,_#000_100%)] text-zinc-100">
+      {/* Sticky OS-style header rail (no new nav, just persistence + clock) */}
+      <div className="sticky top-0 z-50 border-b" style={headerStyle}>
+        <div className="mx-auto max-w-6xl px-6 py-4">
+          <div className="flex items-center justify-between gap-6">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-amber-300">
+                Oasis Public Authority Gateway
+              </div>
+              <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-zinc-400">
+                Routing Surface — No Operations
+              </div>
+            </div>
+
+            {/* Center clock (OS authority marker) */}
+            <div className="hidden md:flex flex-1 justify-center">
+              <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500 text-center">
+                  System Time
+                </div>
+                <div className="mt-0.5 font-mono text-xs text-zinc-300 tabular-nums text-center">
+                  {clock}
+                </div>
+              </div>
+            </div>
+
+            <div className="hidden sm:block text-right">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Launchpad
+              </div>
+              <div className="mt-1 font-mono text-xs text-zinc-400">
+                v0.1 • Verify + Certificate + Onboarding
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      </div>
+
+      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-10">
+        <main className="flex flex-1 flex-col justify-center">
+          <div className="mt-12 max-w-2xl">
+            <div className="text-3xl font-semibold leading-tight text-zinc-100">
+              Official access to verification, certificates, and onboarding.
+            </div>
+            <div className="mt-4 text-sm leading-7 text-zinc-300/90">
+              This gateway routes to sovereign authority surfaces. No records are
+              created here. Authority actions execute on dedicated terminals.
+            </div>
+          </div>
+
+          {/* Primary row */}
+          <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <Tile
+              subtitle="Authority Terminal"
+              title="Sign"
+              description="Execute authorized signing ceremonies on the sovereign signature surface. Signing occurs only on dedicated terminals."
+              href={SIGN_URL}
+              external
+              badge="Terminal"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+            <Tile
+              subtitle="Authority Terminal"
+              title="Verify"
+              description="Verify the authenticity and registration status of an official record using its ledger hash or envelope reference."
+              href={VERIFY_URL}
+              external
+              badge="Read-Only"
+            />
+
+            <Tile
+              subtitle="Authority Terminal"
+              title="Certificate"
+              description="View or download an official certificate associated with a verified record. Certificates resolve only through registered evidence."
+              href={CERTIFICATE_URL}
+              external
+              badge="Certified"
+            />
+          </div>
+
+          {/* Secondary row */}
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <Tile
+                subtitle="Institution"
+                title="Oasis International Holdings"
+                description="Institutional boundary, governance authority, and public trust surface of the Oasis ecosystem."
+                href={HOLDINGS_URL}
+                external
+              />
+            </div>
+
+            <div className="lg:col-span-1">
+              <Tile
+                subtitle="Admissions Surface"
+                title="Onboarding"
+                description="Begin formal onboarding into the Oasis governance ecosystem. Intake occurs on a separate admissions surface."
+                href={ONBOARDING_URL}
+                external
+                badge="Intake"
+              />
+            </div>
+          </div>
+
+          <div className="mt-10 border-t border-white/5 pt-6 text-center text-xs leading-5 text-zinc-500">
+            <div>This gateway performs no operations.</div>
+            <div>Verification and certificates resolve on sovereign surfaces.</div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
