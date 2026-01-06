@@ -1,5 +1,6 @@
 "use client";
 
+import type React from "react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -197,7 +198,7 @@ export default function Launchpad() {
                 Launchpad
               </div>
               <div className="mt-1 font-mono text-xs text-zinc-400">
-                v0.1 • Verify + Certificate + Onboarding
+                v0.1 • Sign + Verify + Certificate + Onboarding
               </div>
             </div>
           </div>
