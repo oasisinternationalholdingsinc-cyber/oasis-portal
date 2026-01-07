@@ -9,7 +9,10 @@ function normalizeUrl(url?: string | null) {
   return url.replace(/\/+$/, "");
 }
 
-const LEDGER_URL = normalizeUrl(process.env.NEXT_PUBLIC_LEDGER_APP_URL);
+const LEDGER_URL =
+  normalizeUrl(process.env.NEXT_PUBLIC_LEDGER_APP_URL) ||
+  "https://ledger.oasisintlholdings.com";
+
 const RE_URL = normalizeUrl(process.env.NEXT_PUBLIC_REAL_ESTATE_APP_URL);
 const LOUNGE_URL = normalizeUrl(process.env.NEXT_PUBLIC_LOUNGE_APP_URL);
 
@@ -198,7 +201,7 @@ export default function Launchpad() {
                 Launchpad
               </div>
               <div className="mt-1 font-mono text-xs text-zinc-400">
-                v0.1 • Sign + Verify + Certificate + Onboarding
+                v0.1 • Terminals + Admissions + Ledger
               </div>
             </div>
           </div>
@@ -209,7 +212,8 @@ export default function Launchpad() {
         <main className="flex flex-1 flex-col justify-center">
           <div className="mt-12 max-w-2xl">
             <div className="text-3xl font-semibold leading-tight text-zinc-100">
-              Official access to verification, certificates, and onboarding.
+              Official access to verification, certificates, onboarding — and
+              the institutional ledger.
             </div>
             <div className="mt-4 text-sm leading-7 text-zinc-300/90">
               This gateway routes to sovereign authority surfaces. No records are
@@ -217,7 +221,7 @@ export default function Launchpad() {
             </div>
           </div>
 
-          {/* Primary row */}
+          {/* PRIMARY: Sovereign authority terminals */}
           <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Tile
               subtitle="Authority Terminal"
@@ -247,7 +251,7 @@ export default function Launchpad() {
             />
           </div>
 
-          {/* Secondary row */}
+          {/* SECONDARY: Institution + Admissions + Ledger */}
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
               <Tile
@@ -270,6 +274,52 @@ export default function Launchpad() {
               />
             </div>
           </div>
+
+          {/* INSTITUTIONAL SYSTEM: Ledger (restrained but explicit) */}
+          <div className="mt-6">
+            <Tile
+              subtitle="Institutional System"
+              title="Digital Parliament Ledger"
+              description="Canonical system of record for Oasis governance. Access is role-gated and admission-based."
+              href={LEDGER_URL}
+              external
+              badge="Authorized"
+              disabled={!LEDGER_URL}
+            />
+          </div>
+
+          {/* Optional (quiet): Future systems if env vars exist — keep restrained */}
+          {(RE_URL || LOUNGE_URL) && (
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <Tile
+                subtitle="Platform"
+                title="Real Estate"
+                description="Operational surface for real-estate workflows within the Oasis ecosystem."
+                href={RE_URL}
+                external
+                badge="Platform"
+                disabled={!RE_URL}
+              />
+              <Tile
+                subtitle="Platform"
+                title="Lounge"
+                description="Operational surface for lounge workflows within the Oasis ecosystem."
+                href={LOUNGE_URL}
+                external
+                badge="Platform"
+                disabled={!LOUNGE_URL}
+              />
+              <Tile
+                subtitle="Intelligence Layer"
+                title="AXIOM"
+                description="Read-only intelligence layer for timelines, signals, and institutional context."
+                href={AXIOM_URL}
+                external={AXIOM_URL !== "/axiom"} // if internal route, keep internal
+                badge="Read-Only"
+                disabled={!AXIOM_URL}
+              />
+            </div>
+          )}
 
           <div className="mt-10 border-t border-white/5 pt-6 text-center text-xs leading-5 text-zinc-500">
             <div>This gateway performs no operations.</div>
