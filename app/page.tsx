@@ -6,7 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 
 function normalizeUrl(url?: string | null) {
   if (!url) return null;
-  return url.replace(/\/+$/, "");
+  const s = String(url).trim();
+  if (!s) return null;
+  return s.replace(/\/+$/, "");
 }
 
 const LEDGER_URL =
@@ -28,11 +30,10 @@ const VERIFY_URL = "https://sign.oasisintlholdings.com/verify.html";
 const CERTIFICATE_URL = "https://sign.oasisintlholdings.com/certificate.html";
 const SIGN_URL = "https://sign.oasisintlholdings.com/sign.html";
 
-// Portal onboarding surface (your new platform)
+// ✅ Admissions surface (ONBOARDING is canonical now)
 const ONBOARDING_URL =
   normalizeUrl(process.env.NEXT_PUBLIC_ONBOARDING_APP_URL) ||
-  normalizeUrl(process.env.NEXT_PUBLIC_PORTAL_APP_URL) ||
-  "https://portal.oasisintlholdings.com";
+  "https://onboarding.oasisintlholdings.com";
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
