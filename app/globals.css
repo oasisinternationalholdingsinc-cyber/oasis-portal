@@ -7,8 +7,16 @@
 
 :root {
   color-scheme: dark;
+
+  /* Core palette */
   --bg0: #05070c;
   --text: rgba(255, 255, 255, 0.92);
+
+  /* iOS safe-area support (used implicitly if needed) */
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+  --safe-left: env(safe-area-inset-left);
+  --safe-right: env(safe-area-inset-right);
 }
 
 html,
@@ -18,17 +26,29 @@ body {
 
 body {
   margin: 0;
+  min-height: 100dvh; /* fixes iOS address-bar collapse */
   background: var(--bg0);
   color: var(--text);
+
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Prevent phantom horizontal scroll on mobile */
+  overflow-x: hidden;
 }
 
+/* Links inherit authority tone */
 a {
   color: inherit;
   text-decoration: none;
 }
 
+/* Numeric stability for clocks, hashes, IDs */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+/* Optional: tap highlight suppression (keeps it clean on iOS) */
+* {
+  -webkit-tap-highlight-color: transparent;
 }
