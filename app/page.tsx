@@ -67,6 +67,22 @@ function useHeaderEngagement() {
   return t;
 }
 
+// ✅ parse hash fragments like "#error=...&error_code=otp_expired"
+function parseHashParams() {
+  const hash = typeof window !== "undefined" ? window.location.hash || "" : "";
+  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  const sp = new URLSearchParams(raw);
+  return {
+    code: sp.get("code"),
+    access_token: sp.get("access_token"),
+    refresh_token: sp.get("refresh_token"),
+    error: sp.get("error"),
+    error_code: sp.get("error_code"),
+    error_description: sp.get("error_description"),
+    type: sp.get("type"),
+  };
+}
+
 function Tile({
   title,
   subtitle,
@@ -152,29 +168,40 @@ function Tile({
 export default function Launchpad() {
   const router = useRouter();
 
-  // ✅ AUTH GUARD (NO UI CHANGES): route auth params to the right surface
+  // ✅ AUTH GUARD (NO UI CHANGES): route auth params whether in query OR hash
   useEffect(() => {
     const url = new URL(window.location.href);
 
-    // PKCE code flow
-    if (url.searchParams.get("code")) {
+    // Query params (PKCE)
+    const qCode = url.searchParams.get("code");
+    if (qCode) {
       router.replace("/auth/callback" + window.location.search);
       return;
     }
 
+    // Hash params (tokens or errors)
+    const h = parseHashParams();
+
     // Hash token flow
-    if (window.location.hash && window.location.hash.includes("access_token=")) {
+    if (h.access_token && h.refresh_token) {
       router.replace("/auth/callback" + window.location.hash);
       return;
     }
 
-    // Error returns (e.g., otp_expired) — don’t strand user on launchpad
-    const err =
-      url.searchParams.get("error_code") ||
-      url.searchParams.get("error") ||
-      url.searchParams.get("type");
+    // Hash error flow (THIS IS YOUR CASE: otp_expired)
+    if (h.error || h.error_code) {
+      const qs = new URLSearchParams();
+      if (h.error) qs.set("error", h.error);
+      if (h.error_code) qs.set("error_code", h.error_code);
+      if (h.error_description) qs.set("error_description", h.error_description);
+      if (h.type) qs.set("type", h.type);
+      router.replace("/auth/set-password?" + qs.toString());
+      return;
+    }
 
-    if (err && (String(err).includes("otp") || url.searchParams.get("error"))) {
+    // Query error flow (fallback)
+    const qErr = url.searchParams.get("error") || url.searchParams.get("error_code");
+    if (qErr) {
       router.replace("/auth/set-password" + window.location.search);
       return;
     }
