@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -77,6 +77,34 @@ function parseErrorFromUrl() {
   };
 }
 
+/**
+ * Reads application context from URL.
+ * Supports:
+ *  - ?app_id=...
+ *  - #app_id=...
+ *  - ?application_id=...  (defensive)
+ *  - #application_id=...  (defensive)
+ */
+function readAppIdFromUrl(): string | null {
+  const url = new URL(window.location.href);
+
+  const q =
+    url.searchParams.get("app_id") ||
+    url.searchParams.get("application_id") ||
+    "";
+  if (q && q.trim()) return q.trim();
+
+  const hash = window.location.hash?.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash || "";
+  const hs = new URLSearchParams(hash);
+
+  const h = hs.get("app_id") || hs.get("application_id") || "";
+  if (h && h.trim()) return h.trim();
+
+  return null;
+}
+
 export default function SetPasswordPage() {
   const now = useClock();
   const railT = useRailEngagement();
@@ -93,8 +121,11 @@ export default function SetPasswordPage() {
     type?: string | null;
   } | null>(null);
 
+  const [appId, setAppId] = useState<string | null>(null);
+
   useEffect(() => {
     setUrlErr(parseErrorFromUrl());
+    setAppId(readAppIdFromUrl());
   }, []);
 
   const clock = useMemo(() => {
@@ -134,10 +165,52 @@ export default function SetPasswordPage() {
     if (pw !== pw2) return setStatus("Passwords do not match.");
 
     setBusy(true);
+
+    // 1) set password (invite link should already have established a session)
     const { error } = await supabase.auth.updateUser({ password: pw });
+    if (error) {
+      setBusy(false);
+      return setStatus(error.message);
+    }
+
+    // 2) get authenticated session + user id
+    const { data: sessRes, error: sessErr } = await supabase.auth.getSession();
+    if (sessErr) {
+      setBusy(false);
+      return setStatus(`Password set, but session check failed: ${sessErr.message}`);
+    }
+
+    const userId = sessRes?.session?.user?.id ?? null;
+    if (!userId) {
+      setBusy(false);
+      return setStatus(
+        "Password set, but session was not established. Please open the newest invite email and try again."
+      );
+    }
+
+    // 3) require app_id to finish provisioning
+    if (!appId) {
+      setBusy(false);
+      return setStatus(
+        "Password set, but provisioning context (app_id) is missing. Re-issue the invite with a redirect including ?app_id=..."
+      );
+    }
+
+    // 4) call provisioning RPC (entity + memberships + PROVISIONED)
+    const { data: prov, error: provErr } = await supabase.rpc(
+      "admissions_complete_provisioning",
+      {
+        p_application_id: appId,
+        p_user_id: userId,
+      }
+    );
+
     setBusy(false);
 
-    if (error) return setStatus(error.message);
+    if (provErr) return setStatus(`Provisioning failed: ${provErr.message}`);
+    if (prov && (prov as any).ok === false) {
+      return setStatus(`Provisioning failed: ${(prov as any).error || "unknown_error"}`);
+    }
 
     setStatus("Password set. Account activated.");
     window.location.href = "/";
@@ -173,9 +246,7 @@ export default function SetPasswordPage() {
               <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
                 Authority Surface
               </div>
-              <div className="mt-1 font-mono text-xs text-zinc-400">
-                v0.1 • Credentials
-              </div>
+              <div className="mt-1 font-mono text-xs text-zinc-400">v0.1 • Credentials</div>
             </div>
           </div>
         </div>
@@ -189,11 +260,10 @@ export default function SetPasswordPage() {
               <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
                 Oasis Portal
               </div>
-              <h1 className="mt-2 text-2xl font-semibold text-zinc-100">
-                Create your password
-              </h1>
+              <h1 className="mt-2 text-2xl font-semibold text-zinc-100">Create your password</h1>
               <p className="mt-2 text-sm leading-6 text-zinc-300/90">
-                This credential binds your access to the authority gateway. No operations occur here.
+                This credential binds your access to the authority gateway. No operations occur
+                here.
               </p>
             </div>
 
