@@ -88,10 +88,7 @@ function parseErrorFromUrl() {
 function readAppIdFromUrl(): string | null {
   const url = new URL(window.location.href);
 
-  const q =
-    url.searchParams.get("app_id") ||
-    url.searchParams.get("application_id") ||
-    "";
+  const q = url.searchParams.get("app_id") || url.searchParams.get("application_id") || "";
   if (q && q.trim()) return q.trim();
 
   const hash = window.location.hash?.startsWith("#")
@@ -103,6 +100,11 @@ function readAppIdFromUrl(): string | null {
   if (h && h.trim()) return h.trim();
 
   return null;
+}
+
+function isUuidLike(x: string) {
+  const s = (x || "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 }
 
 export default function SetPasswordPage() {
@@ -161,59 +163,66 @@ export default function SetPasswordPage() {
   const submit = async () => {
     setStatus(null);
 
-    if (!pw || pw.length < 8) return setStatus("Password must be at least 8 characters.");
-    if (pw !== pw2) return setStatus("Passwords do not match.");
+    const a = (pw || "").trim();
+    const b = (pw2 || "").trim();
+
+    if (!a || a.length < 8) return setStatus("Password must be at least 8 characters.");
+    if (a !== b) return setStatus("Passwords do not match.");
+
+    // Optional guard: help catch the #access_token-only situation
+    if (appId && !isUuidLike(appId)) {
+      return setStatus('Invalid app_id format. Expected a UUID (example: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx").');
+    }
 
     setBusy(true);
 
-    // 1) set password (invite link should already have established a session)
-    const { error } = await supabase.auth.updateUser({ password: pw });
-    if (error) {
-      setBusy(false);
-      return setStatus(error.message);
-    }
+    try {
+      // 1) Set password (invite link should already have established a session)
+      const { error } = await supabase.auth.updateUser({ password: a });
+      if (error) throw error;
 
-    // 2) get authenticated session + user id
-    const { data: sessRes, error: sessErr } = await supabase.auth.getSession();
-    if (sessErr) {
-      setBusy(false);
-      return setStatus(`Password set, but session check failed: ${sessErr.message}`);
-    }
+      // 2) Confirm session + user id
+      const { data: sessRes, error: sessErr } = await supabase.auth.getSession();
+      if (sessErr) throw sessErr;
 
-    const userId = sessRes?.session?.user?.id ?? null;
-    if (!userId) {
-      setBusy(false);
-      return setStatus(
-        "Password set, but session was not established. Please open the newest invite email and try again."
-      );
-    }
+      const userId = sessRes?.session?.user?.id ?? null;
+      if (!userId) {
+        setStatus(
+          "Password set, but session was not established. Please open the newest invite email and try again."
+        );
+        return;
+      }
 
-    // 3) require app_id to finish provisioning
-    if (!appId) {
-      setBusy(false);
-      return setStatus(
-        "Password set, but provisioning context (app_id) is missing. Re-issue the invite with a redirect including ?app_id=..."
-      );
-    }
+      // 3) Require app_id to finish provisioning
+      if (!appId) {
+        setStatus(
+          "Password set, but provisioning context (app_id) is missing. Re-issue the invite with a redirect including ?app_id=..."
+        );
+        return;
+      }
 
-    // 4) call provisioning RPC (entity + memberships + PROVISIONED)
-    const { data: prov, error: provErr } = await supabase.rpc(
-      "admissions_complete_provisioning",
-      {
+      // 4) Call provisioning RPC (entity + memberships + PROVISIONED)
+      const { data: prov, error: provErr } = await supabase.rpc("admissions_complete_provisioning", {
         p_application_id: appId,
         p_user_id: userId,
+      });
+
+      if (provErr) {
+        setStatus(`Provisioning failed: ${provErr.message}`);
+        return;
       }
-    );
+      if (prov && (prov as any).ok === false) {
+        setStatus(`Provisioning failed: ${(prov as any).error || "unknown_error"}`);
+        return;
+      }
 
-    setBusy(false);
-
-    if (provErr) return setStatus(`Provisioning failed: ${provErr.message}`);
-    if (prov && (prov as any).ok === false) {
-      return setStatus(`Provisioning failed: ${(prov as any).error || "unknown_error"}`);
+      setStatus("Password set. Account activated.");
+      window.location.href = "/";
+    } catch (e: any) {
+      setStatus(e?.message ?? "Failed to set password.");
+    } finally {
+      setBusy(false);
     }
-
-    setStatus("Password set. Account activated.");
-    window.location.href = "/";
   };
 
   return (
@@ -223,29 +232,19 @@ export default function SetPasswordPage() {
         <div className="mx-auto max-w-6xl px-6 py-4">
           <div className="flex items-center justify-between gap-6">
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-amber-300">
-                Oasis Portal
-              </div>
-              <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-                Account Provisioning
-              </div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-amber-300">Oasis Portal</div>
+              <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-zinc-400">Account Provisioning</div>
             </div>
 
             <div className="hidden md:flex flex-1 justify-center">
               <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2">
-                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500 text-center">
-                  System Time
-                </div>
-                <div className="mt-0.5 font-mono text-xs text-zinc-300 tabular-nums text-center">
-                  {clock}
-                </div>
+                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500 text-center">System Time</div>
+                <div className="mt-0.5 font-mono text-xs text-zinc-300 tabular-nums text-center">{clock}</div>
               </div>
             </div>
 
             <div className="hidden sm:block text-right">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-                Authority Surface
-              </div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Authority Surface</div>
               <div className="mt-1 font-mono text-xs text-zinc-400">v0.1 • Credentials</div>
             </div>
           </div>
@@ -257,32 +256,40 @@ export default function SetPasswordPage() {
         <main className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-[520px]">
             <div className="mb-6 text-center">
-              <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
-                Oasis Portal
-              </div>
+              <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">Oasis Portal</div>
               <h1 className="mt-2 text-2xl font-semibold text-zinc-100">Create your password</h1>
               <p className="mt-2 text-sm leading-6 text-zinc-300/90">
-                This credential binds your access to the authority gateway. No operations occur
-                here.
+                This credential binds your access to the authority gateway. No operations occur here.
               </p>
             </div>
 
             {showExpired ? (
               <div className="mb-4 rounded-2xl border border-red-500/25 bg-red-950/25 p-4">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-red-300">
-                  Link invalid or expired
-                </div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-red-300">Link invalid or expired</div>
                 <div className="mt-2 text-sm text-zinc-200">
-                  This invite/reset link has already been used or has expired. Request a new invite
-                  and use the newest email.
+                  This invite/reset link has already been used or has expired. Request a new invite and use the newest email.
                 </div>
               </div>
             ) : null}
 
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.60)]">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
-                Credentials
+            {!appId ? (
+              <div className="mb-4 rounded-2xl border border-amber-300/25 bg-amber-950/15 p-4">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-amber-200">Provisioning context missing</div>
+                <div className="mt-2 text-sm text-zinc-200">
+                  This link is missing <span className="font-mono text-amber-200">app_id</span>. You can still set your password,
+                  but provisioning will not complete until a link with{" "}
+                  <span className="font-mono text-amber-200">?app_id=...</span> is used.
+                </div>
               </div>
+            ) : (
+              <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">Application</div>
+                <div className="mt-1 font-mono text-xs text-zinc-300 break-all">{appId}</div>
+              </div>
+            )}
+
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.60)]">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">Credentials</div>
 
               <div className="mt-4 space-y-3">
                 <input
@@ -320,9 +327,7 @@ export default function SetPasswordPage() {
                 </div>
               ) : null}
 
-              <div className="mt-5 text-xs leading-5 text-zinc-500">
-                If you did not expect this invitation, you may close this page.
-              </div>
+              <div className="mt-5 text-xs leading-5 text-zinc-500">If you did not expect this invitation, you may close this page.</div>
             </div>
           </div>
         </main>
@@ -330,12 +335,8 @@ export default function SetPasswordPage() {
         <div className="mt-10 border-t" style={footerStyle}>
           <div className="mx-auto max-w-6xl px-6 py-5">
             <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">
-                This surface performs no operations.
-              </div>
-              <div className="text-xs text-zinc-500">
-                Verification and certificates resolve on sovereign terminals.
-              </div>
+              <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">This surface performs no operations.</div>
+              <div className="text-xs text-zinc-500">Verification and certificates resolve on sovereign terminals.</div>
             </div>
           </div>
         </div>
