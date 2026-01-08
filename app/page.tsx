@@ -3,6 +3,7 @@
 import type React from "react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 function normalizeUrl(url?: string | null) {
   if (!url) return null;
@@ -149,6 +150,36 @@ function Tile({
 }
 
 export default function Launchpad() {
+  const router = useRouter();
+
+  // ✅ AUTH GUARD (NO UI CHANGES): route auth params to the right surface
+  useEffect(() => {
+    const url = new URL(window.location.href);
+
+    // PKCE code flow
+    if (url.searchParams.get("code")) {
+      router.replace("/auth/callback" + window.location.search);
+      return;
+    }
+
+    // Hash token flow
+    if (window.location.hash && window.location.hash.includes("access_token=")) {
+      router.replace("/auth/callback" + window.location.hash);
+      return;
+    }
+
+    // Error returns (e.g., otp_expired) — don’t strand user on launchpad
+    const err =
+      url.searchParams.get("error_code") ||
+      url.searchParams.get("error") ||
+      url.searchParams.get("type");
+
+    if (err && (String(err).includes("otp") || url.searchParams.get("error"))) {
+      router.replace("/auth/set-password" + window.location.search);
+      return;
+    }
+  }, [router]);
+
   const now = useClock();
   const t = useHeaderEngagement();
 
