@@ -1,10 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabaseBrowser as supabase } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { persistSession: true, autoRefreshToken: true } }
+);
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
 function useClock() {
@@ -16,10 +26,6 @@ function useClock() {
   return now;
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
 function useRailEngagement() {
   const [t, setT] = useState(0); // 0..1
   useEffect(() => {
@@ -28,8 +34,8 @@ function useRailEngagement() {
       const scrollTop = window.scrollY || doc.scrollTop || 0;
       const viewportH = window.innerHeight || 0;
       const docH = Math.max(doc.scrollHeight, doc.offsetHeight);
+      const dist = docH - (scrollTop + viewportH);
 
-      const dist = docH - (scrollTop + viewportH); // px from bottom
       const start = 520;
       const end = 140;
       const raw = (start - dist) / (start - end);
@@ -44,7 +50,6 @@ function useRailEngagement() {
 
 function parseErrorFromUrl() {
   const url = new URL(window.location.href);
-
   const q = {
     error: url.searchParams.get("error"),
     error_code: url.searchParams.get("error_code"),
@@ -52,7 +57,6 @@ function parseErrorFromUrl() {
     type: url.searchParams.get("type"),
   };
 
-  // Support hash-form errors too (some providers put them there)
   const hash = window.location.hash?.startsWith("#")
     ? window.location.hash.slice(1)
     : window.location.hash || "";
@@ -101,7 +105,6 @@ export default function SetPasswordPage() {
   }, [now]);
 
   const headerStyle = useMemo(() => {
-    // Same “authority glass” vibe as the Launchpad
     return {
       background: `rgba(2, 6, 23, 0.72)`,
       borderBottomColor: `rgba(255,255,255, 0.10)`,
@@ -120,34 +123,25 @@ export default function SetPasswordPage() {
     } as React.CSSProperties;
   }, [railT]);
 
+  const showExpired =
+    (urlErr?.error_code || "").toLowerCase().includes("otp_expired") ||
+    (urlErr?.error || "").toLowerCase().includes("access_denied");
+
   const submit = async () => {
     setStatus(null);
 
-    if (!pw || pw.length < 8) {
-      setStatus("Password must be at least 8 characters.");
-      return;
-    }
-    if (pw !== pw2) {
-      setStatus("Passwords do not match.");
-      return;
-    }
+    if (!pw || pw.length < 8) return setStatus("Password must be at least 8 characters.");
+    if (pw !== pw2) return setStatus("Passwords do not match.");
 
     setBusy(true);
     const { error } = await supabase.auth.updateUser({ password: pw });
     setBusy(false);
 
-    if (error) {
-      setStatus(error.message);
-      return;
-    }
+    if (error) return setStatus(error.message);
 
     setStatus("Password set. Account activated.");
     window.location.href = "/";
   };
-
-  const showExpired =
-    (urlErr?.error_code || "").toLowerCase().includes("otp_expired") ||
-    (urlErr?.error || "").toLowerCase().includes("access_denied");
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#020c24_0%,_#020617_45%,_#000_100%)] text-zinc-100">
@@ -164,7 +158,6 @@ export default function SetPasswordPage() {
               </div>
             </div>
 
-            {/* Center clock */}
             <div className="hidden md:flex flex-1 justify-center">
               <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2">
                 <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500 text-center">
@@ -200,21 +193,18 @@ export default function SetPasswordPage() {
                 Create your password
               </h1>
               <p className="mt-2 text-sm leading-6 text-zinc-300/90">
-                This credential binds your access to the authority gateway. No
-                operations occur here.
+                This credential binds your access to the authority gateway. No operations occur here.
               </p>
             </div>
 
-            {/* Error banner */}
             {showExpired ? (
               <div className="mb-4 rounded-2xl border border-red-500/25 bg-red-950/25 p-4">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-red-300">
                   Link invalid or expired
                 </div>
                 <div className="mt-2 text-sm text-zinc-200">
-                  This invite/reset link has already been used or has expired.
-                  Request a new invite from the admissions console and use the
-                  newest email.
+                  This invite/reset link has already been used or has expired. Request a new invite
+                  and use the newest email.
                 </div>
               </div>
             ) : null}
@@ -267,7 +257,6 @@ export default function SetPasswordPage() {
           </div>
         </main>
 
-        {/* Footer Rail */}
         <div className="mt-10 border-t" style={footerStyle}>
           <div className="mx-auto max-w-6xl px-6 py-5">
             <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
