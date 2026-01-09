@@ -17,6 +17,7 @@ function getHashParams() {
     access_token: q.get("access_token"),
     refresh_token: q.get("refresh_token"),
     type: q.get("type"),
+    app_id: q.get("app_id") || q.get("application_id"),
   };
 }
 
@@ -26,22 +27,33 @@ export default function AuthCallbackPage() {
 
   useEffect(() => {
     (async () => {
-      // 1) PKCE code flow (newer)
       const url = new URL(window.location.href);
-      const code = url.searchParams.get("code");
 
+      // Carry app_id forward so Set-Password can SHOW it.
+      const appId =
+        url.searchParams.get("app_id") ||
+        url.searchParams.get("application_id") ||
+        null;
+
+      const toSetPassword = (app_id: string | null) => {
+        const dest = app_id ? `/auth/set-password?app_id=${encodeURIComponent(app_id)}` : "/auth/set-password";
+        router.replace(dest);
+      };
+
+      // 1) PKCE code flow (newer)
+      const code = url.searchParams.get("code");
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) {
           setMsg(`Session error: ${error.message}`);
           return;
         }
-        router.replace("/auth/set-password");
+        toSetPassword(appId);
         return;
       }
 
       // 2) Hash token flow (older)
-      const { access_token, refresh_token } = getHashParams();
+      const { access_token, refresh_token, app_id: hashAppId } = getHashParams();
       if (access_token && refresh_token) {
         const { error } = await supabase.auth.setSession({
           access_token,
@@ -53,7 +65,7 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        router.replace("/auth/set-password");
+        toSetPassword(appId || hashAppId || null);
         return;
       }
 
