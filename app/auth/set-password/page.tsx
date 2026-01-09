@@ -107,6 +107,30 @@ function isUuidLike(x: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 }
 
+/**
+ * IMPORTANT:
+ * Supabase Auth emails do not reliably preserve custom query params.
+ * So if app_id is missing, we resolve the latest onboarding application by the authenticated user's email.
+ *
+ * This requires your RLS to allow this select for authenticated users (typical policy: applicant_email == auth.email()).
+ */
+async function resolveLatestAppIdByEmail(email: string): Promise<string | null> {
+  const e = (email || "").trim().toLowerCase();
+  if (!e) return null;
+
+  // Prefer ilike for defensiveness (case-insensitive match)
+  const { data, error } = await supabase
+    .from("onboarding_applications")
+    .select("id")
+    .ilike("applicant_email", e)
+    .order("submitted_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return null;
+  return data?.id ?? null;
+}
+
 export default function SetPasswordPage() {
   const now = useClock();
   const railT = useRailEngagement();
@@ -169,23 +193,27 @@ export default function SetPasswordPage() {
     if (!a || a.length < 8) return setStatus("Password must be at least 8 characters.");
     if (a !== b) return setStatus("Passwords do not match.");
 
-    // Optional guard: help catch the #access_token-only situation
+    // Guard: if appId exists but not UUID, warn early
     if (appId && !isUuidLike(appId)) {
-      return setStatus('Invalid app_id format. Expected a UUID (example: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx").');
+      return setStatus(
+        'Invalid app_id format. Expected a UUID (example: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx").'
+      );
     }
 
     setBusy(true);
 
     try {
-      // 1) Set password (invite link should already have established a session)
+      // 1) Set password (invite/reset link should already have established a session)
       const { error } = await supabase.auth.updateUser({ password: a });
       if (error) throw error;
 
-      // 2) Confirm session + user id
-      const { data: sessRes, error: sessErr } = await supabase.auth.getSession();
-      if (sessErr) throw sessErr;
+      // 2) Confirm user
+      const { data: userRes, error: userErr } = await supabase.auth.getUser();
+      if (userErr) throw userErr;
 
-      const userId = sessRes?.session?.user?.id ?? null;
+      const userId = userRes?.user?.id ?? null;
+      const email = (userRes?.user?.email || "").trim().toLowerCase();
+
       if (!userId) {
         setStatus(
           "Password set, but session was not established. Please open the newest invite email and try again."
@@ -193,17 +221,35 @@ export default function SetPasswordPage() {
         return;
       }
 
-      // 3) Require app_id to finish provisioning
-      if (!appId) {
-        setStatus(
-          "Password set, but provisioning context (app_id) is missing. Re-issue the invite with a redirect including ?app_id=..."
-        );
-        return;
+      // 3) Resolve provisioning context
+      //    - Prefer URL app_id if present
+      //    - Otherwise resolve latest application by authenticated user's email
+      let effectiveAppId = appId;
+
+      if (!effectiveAppId) {
+        if (!email) {
+          setStatus(
+            "Password set, but we could not resolve your email from session. Please re-open the newest invite and try again."
+          );
+          return;
+        }
+
+        setStatus("Password set. Resolving provisioning context…");
+        const resolved = await resolveLatestAppIdByEmail(email);
+        if (resolved && isUuidLike(resolved)) {
+          effectiveAppId = resolved;
+          setAppId(resolved);
+        } else {
+          setStatus(
+            "Password set, but provisioning context could not be resolved. If you just applied, wait 10 seconds and refresh. Otherwise, re-issue the invite from Admissions."
+          );
+          return;
+        }
       }
 
       // 4) Call provisioning RPC (entity + memberships + PROVISIONED)
       const { data: prov, error: provErr } = await supabase.rpc("admissions_complete_provisioning", {
-        p_application_id: appId,
+        p_application_id: effectiveAppId,
         p_user_id: userId,
       });
 
@@ -232,19 +278,29 @@ export default function SetPasswordPage() {
         <div className="mx-auto max-w-6xl px-6 py-4">
           <div className="flex items-center justify-between gap-6">
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-amber-300">Oasis Portal</div>
-              <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-zinc-400">Account Provisioning</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-amber-300">
+                Oasis Portal
+              </div>
+              <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-zinc-400">
+                Account Provisioning
+              </div>
             </div>
 
             <div className="hidden md:flex flex-1 justify-center">
               <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2">
-                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500 text-center">System Time</div>
-                <div className="mt-0.5 font-mono text-xs text-zinc-300 tabular-nums text-center">{clock}</div>
+                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500 text-center">
+                  System Time
+                </div>
+                <div className="mt-0.5 font-mono text-xs text-zinc-300 tabular-nums text-center">
+                  {clock}
+                </div>
               </div>
             </div>
 
             <div className="hidden sm:block text-right">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Authority Surface</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Authority Surface
+              </div>
               <div className="mt-1 font-mono text-xs text-zinc-400">v0.1 • Credentials</div>
             </div>
           </div>
@@ -265,20 +321,25 @@ export default function SetPasswordPage() {
 
             {showExpired ? (
               <div className="mb-4 rounded-2xl border border-red-500/25 bg-red-950/25 p-4">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-red-300">Link invalid or expired</div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-red-300">
+                  Link invalid or expired
+                </div>
                 <div className="mt-2 text-sm text-zinc-200">
-                  This invite/reset link has already been used or has expired. Request a new invite and use the newest email.
+                  This invite/reset link has already been used or has expired. Request a new invite and
+                  use the newest email.
                 </div>
               </div>
             ) : null}
 
             {!appId ? (
               <div className="mb-4 rounded-2xl border border-amber-300/25 bg-amber-950/15 p-4">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-amber-200">Provisioning context missing</div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-amber-200">
+                  Provisioning context will be resolved
+                </div>
                 <div className="mt-2 text-sm text-zinc-200">
-                  This link is missing <span className="font-mono text-amber-200">app_id</span>. You can still set your password,
-                  but provisioning will not complete until a link with{" "}
-                  <span className="font-mono text-amber-200">?app_id=...</span> is used.
+                  This link is missing <span className="font-mono text-amber-200">app_id</span>. That is
+                  expected on some Supabase auth flows. After you set your password, the portal will
+                  resolve your application context automatically and complete provisioning.
                 </div>
               </div>
             ) : (
@@ -289,7 +350,9 @@ export default function SetPasswordPage() {
             )}
 
             <div className="rounded-2xl border border-white/10 bg-black/25 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.60)]">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">Credentials</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
+                Credentials
+              </div>
 
               <div className="mt-4 space-y-3">
                 <input
@@ -327,7 +390,9 @@ export default function SetPasswordPage() {
                 </div>
               ) : null}
 
-              <div className="mt-5 text-xs leading-5 text-zinc-500">If you did not expect this invitation, you may close this page.</div>
+              <div className="mt-5 text-xs leading-5 text-zinc-500">
+                If you did not expect this invitation, you may close this page.
+              </div>
             </div>
           </div>
         </main>
@@ -335,8 +400,12 @@ export default function SetPasswordPage() {
         <div className="mt-10 border-t" style={footerStyle}>
           <div className="mx-auto max-w-6xl px-6 py-5">
             <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">This surface performs no operations.</div>
-              <div className="text-xs text-zinc-500">Verification and certificates resolve on sovereign terminals.</div>
+              <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+                This surface performs no operations.
+              </div>
+              <div className="text-xs text-zinc-500">
+                Verification and certificates resolve on sovereign terminals.
+              </div>
             </div>
           </div>
         </div>
