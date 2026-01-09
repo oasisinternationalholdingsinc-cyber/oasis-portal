@@ -77,34 +77,11 @@ function parseErrorFromUrl() {
   };
 }
 
-/**
- * Reads application context from URL.
- * Supports:
- *  - ?app_id=...
- *  - #app_id=...
- *  - ?application_id=...  (defensive)
- *  - #application_id=...  (defensive)
- */
-function readAppIdFromUrl(): string | null {
-  const url = new URL(window.location.href);
-
-  const q = url.searchParams.get("app_id") || url.searchParams.get("application_id") || "";
-  if (q && q.trim()) return q.trim();
-
-  const hash = window.location.hash?.startsWith("#")
-    ? window.location.hash.slice(1)
-    : window.location.hash || "";
-  const hs = new URLSearchParams(hash);
-
-  const h = hs.get("app_id") || hs.get("application_id") || "";
-  if (h && h.trim()) return h.trim();
-
-  return null;
-}
-
 function isUuidLike(x: string) {
   const s = (x || "").trim();
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    s
+  );
 }
 
 type AppIdSource = "query" | "hash" | "cached" | "resolved" | "none";
@@ -132,12 +109,14 @@ async function getAccessTokenOrNull(): Promise<string | null> {
   return data?.session?.access_token ?? null;
 }
 
-async function callProvisioningEdge(
-  token: string,
-  appId: string | null
-): Promise<{ ok: boolean; app_id?: string; error?: string }> {
+type ProvisionResponse =
+  | { ok: true; app_id?: string | null }
+  | { ok: false; error?: string | null };
+
+async function callProvisioningEdge(token: string, appId: string | null): Promise<ProvisionResponse> {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
   const res = await fetch(`${base}/functions/v1/admissions-complete-provisioning`, {
     method: "POST",
     headers: {
@@ -155,10 +134,10 @@ async function callProvisioningEdge(
     // ignore
   }
 
-  if (!res.ok) {
-    return { ok: false, error: j?.error || `HTTP_${res.status}` };
-  }
-  return { ok: !!j?.ok, app_id: j?.app_id, error: j?.error };
+  if (!res.ok) return { ok: false, error: j?.error || `HTTP_${res.status}` };
+  if (!j?.ok) return { ok: false, error: j?.error || "unknown_error" };
+
+  return { ok: true, app_id: j?.app_id ?? null };
 }
 
 export default function SetPasswordPage() {
@@ -226,7 +205,7 @@ export default function SetPasswordPage() {
 
   const footerStyle = useMemo(() => {
     const bg = `rgba(2, 6, 23, ${0.28 + railT * 0.55})`;
-    const border = `rgba(255,255,255, ${0.06 + railT * 0.10})`;
+    const border = `rgba(255,255,255, ${0.06 + railT * 0.1})`;
     const blur = 10 + railT * 10;
     return {
       background: bg,
@@ -262,7 +241,7 @@ export default function SetPasswordPage() {
       const { error } = await supabase.auth.updateUser({ password: a });
       if (error) throw error;
 
-      // 2) Confirm we have a session token (required for Edge Function provisioning)
+      // 2) Confirm we have a session token (needed to call Edge Function)
       const token = await getAccessTokenOrNull();
       if (!token) {
         setStatus(
@@ -271,18 +250,18 @@ export default function SetPasswordPage() {
         return;
       }
 
-      // 3) Call provisioning Edge Function (it resolves app_id if missing and completes provisioning)
+      // 3) Provision via Edge Function (it resolves app_id if missing + completes provisioning)
       setStatus("Password set. Resolving provisioning context…");
 
-      const effective = appId && isUuidLike(appId) ? appId : null;
-      const out = await callProvisioningEdge(token, effective);
+      const effectiveAppId = appId && isUuidLike(appId) ? appId : null;
+      const out = await callProvisioningEdge(token, effectiveAppId);
 
       if (!out.ok) {
         setStatus(`Provisioning failed: ${out.error || "unknown_error"}`);
         return;
       }
 
-      // 4) Update badge immediately from backend-returned app_id
+      // 4) Badge update (must show app_id if returned)
       if (out.app_id && isUuidLike(out.app_id)) {
         setAppId(out.app_id);
         setAppIdSource("resolved");
@@ -389,7 +368,7 @@ export default function SetPasswordPage() {
               </div>
             ) : null}
 
-            {/* Badge-critical: if app_id exists, show it as a badge; otherwise show a "will resolve" panel */}
+            {/* Badge-critical */}
             {appIdBadge ? (
               appIdBadge
             ) : (
@@ -406,7 +385,9 @@ export default function SetPasswordPage() {
             )}
 
             <div className="rounded-2xl border border-white/10 bg-black/25 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.60)]">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">Credentials</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
+                Credentials
+              </div>
 
               <div className="mt-4 space-y-3">
                 <input
