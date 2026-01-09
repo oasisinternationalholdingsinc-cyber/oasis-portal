@@ -118,7 +118,6 @@ async function resolveLatestAppIdByEmail(email: string): Promise<string | null> 
   const e = (email || "").trim().toLowerCase();
   if (!e) return null;
 
-  // Prefer ilike for defensiveness (case-insensitive match)
   const { data, error } = await supabase
     .from("onboarding_applications")
     .select("id")
@@ -129,6 +128,25 @@ async function resolveLatestAppIdByEmail(email: string): Promise<string | null> 
 
   if (error) return null;
   return data?.id ?? null;
+}
+
+type AppIdSource = "query" | "hash" | "cached" | "resolved" | "none";
+
+function readAppIdFromUrlWithSource(): { appId: string | null; source: AppIdSource } {
+  const url = new URL(window.location.href);
+
+  const q = url.searchParams.get("app_id") || url.searchParams.get("application_id");
+  if (q && q.trim()) return { appId: q.trim(), source: "query" };
+
+  const hash = window.location.hash?.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash || "";
+  const hs = new URLSearchParams(hash);
+
+  const h = hs.get("app_id") || hs.get("application_id");
+  if (h && h.trim()) return { appId: h.trim(), source: "hash" };
+
+  return { appId: null, source: "none" };
 }
 
 export default function SetPasswordPage() {
@@ -147,11 +165,36 @@ export default function SetPasswordPage() {
     type?: string | null;
   } | null>(null);
 
+  // app context (badge-critical)
   const [appId, setAppId] = useState<string | null>(null);
+  const [appIdSource, setAppIdSource] = useState<AppIdSource>("none");
 
   useEffect(() => {
     setUrlErr(parseErrorFromUrl());
-    setAppId(readAppIdFromUrl());
+
+    // 1) URL
+    const fromUrl = readAppIdFromUrlWithSource();
+    if (fromUrl.appId) {
+      setAppId(fromUrl.appId);
+      setAppIdSource(fromUrl.source);
+      try {
+        sessionStorage.setItem("oasis_app_id", fromUrl.appId);
+      } catch {}
+      return;
+    }
+
+    // 2) cached (UX continuity)
+    try {
+      const cached = sessionStorage.getItem("oasis_app_id");
+      if (cached && cached.trim()) {
+        setAppId(cached.trim());
+        setAppIdSource("cached");
+        return;
+      }
+    } catch {}
+
+    setAppId(null);
+    setAppIdSource("none");
   }, []);
 
   const clock = useMemo(() => {
@@ -193,7 +236,7 @@ export default function SetPasswordPage() {
     if (!a || a.length < 8) return setStatus("Password must be at least 8 characters.");
     if (a !== b) return setStatus("Passwords do not match.");
 
-    // Guard: if appId exists but not UUID, warn early
+    // Guard: if appId exists but not UUID, warn early (but we can still resolve after session)
     if (appId && !isUuidLike(appId)) {
       return setStatus(
         'Invalid app_id format. Expected a UUID (example: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx").'
@@ -207,7 +250,7 @@ export default function SetPasswordPage() {
       const { error } = await supabase.auth.updateUser({ password: a });
       if (error) throw error;
 
-      // 2) Confirm user
+      // 2) Confirm user + session (needed for resolve/provision)
       const { data: userRes, error: userErr } = await supabase.auth.getUser();
       if (userErr) throw userErr;
 
@@ -221,10 +264,8 @@ export default function SetPasswordPage() {
         return;
       }
 
-      // 3) Resolve provisioning context
-      //    - Prefer URL app_id if present
-      //    - Otherwise resolve latest application by authenticated user's email
-      let effectiveAppId = appId;
+      // 3) Resolve provisioning context (badge must show effective app_id)
+      let effectiveAppId = appId && isUuidLike(appId) ? appId : null;
 
       if (!effectiveAppId) {
         if (!email) {
@@ -235,15 +276,29 @@ export default function SetPasswordPage() {
         }
 
         setStatus("Password set. Resolving provisioning context…");
+
         const resolved = await resolveLatestAppIdByEmail(email);
         if (resolved && isUuidLike(resolved)) {
           effectiveAppId = resolved;
+
+          // update badge immediately (this is what you wanted)
           setAppId(resolved);
+          setAppIdSource("resolved");
+          try {
+            sessionStorage.setItem("oasis_app_id", resolved);
+          } catch {}
         } else {
           setStatus(
             "Password set, but provisioning context could not be resolved. If you just applied, wait 10 seconds and refresh. Otherwise, re-issue the invite from Admissions."
           );
           return;
+        }
+      } else {
+        // If we had appId from URL/cache, reflect source clearly
+        if (appIdSource === "cached") {
+          // keep cached marker
+        } else if (appIdSource === "none") {
+          setAppIdSource("query");
         }
       }
 
@@ -270,6 +325,33 @@ export default function SetPasswordPage() {
       setBusy(false);
     }
   };
+
+  const appIdBadge = useMemo(() => {
+    if (!appId || !isUuidLike(appId)) return null;
+
+    const label =
+      appIdSource === "query"
+        ? "query"
+        : appIdSource === "hash"
+        ? "hash"
+        : appIdSource === "cached"
+        ? "cached"
+        : appIdSource === "resolved"
+        ? "resolved"
+        : "context";
+
+    return (
+      <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">Provisioning Context</div>
+          <div className="rounded-full border border-amber-300/25 bg-amber-950/20 px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-amber-200">
+            {label}
+          </div>
+        </div>
+        <div className="mt-1 font-mono text-xs text-zinc-300 break-all">{appId}</div>
+      </div>
+    );
+  }, [appId, appIdSource]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#020c24_0%,_#020617_45%,_#000_100%)] text-zinc-100">
@@ -331,7 +413,10 @@ export default function SetPasswordPage() {
               </div>
             ) : null}
 
-            {!appId ? (
+            {/* Badge-critical: if app_id exists, show it as a badge; otherwise show a "will resolve" panel */}
+            {appIdBadge ? (
+              appIdBadge
+            ) : (
               <div className="mb-4 rounded-2xl border border-amber-300/25 bg-amber-950/15 p-4">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-amber-200">
                   Provisioning context will be resolved
@@ -341,11 +426,6 @@ export default function SetPasswordPage() {
                   expected on some Supabase auth flows. After you set your password, the portal will
                   resolve your application context automatically and complete provisioning.
                 </div>
-              </div>
-            ) : (
-              <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">Application</div>
-                <div className="mt-1 font-mono text-xs text-zinc-300 break-all">{appId}</div>
               </div>
             )}
 
