@@ -237,7 +237,7 @@ export default function SetPasswordPage() {
     setBusy(true);
 
     try {
-      // 1) Set password (invite/reset link should already have established a session)
+      // 1) Set password
       const { error } = await supabase.auth.updateUser({ password: a });
       if (error) throw error;
 
