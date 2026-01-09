@@ -103,41 +103,35 @@ function readAppIdFromUrlWithSource(): { appId: string | null; source: AppIdSour
   return { appId: null, source: "none" };
 }
 
-async function getAccessTokenOrNull(): Promise<string | null> {
-  const { data, error } = await supabase.auth.getSession();
+/**
+ * Resolve latest onboarding_applications.id by the *authenticated* user's email.
+ * This will ONLY work if:
+ * - the user is authenticated (they are, after invite link + set password)
+ * - RLS allows the authenticated user to select their own application row(s)
+ */
+async function resolveLatestAppIdByEmail(email: string): Promise<string | null> {
+  const e = (email || "").trim().toLowerCase();
+  if (!e) return null;
+
+  const { data, error } = await supabase
+    .from("onboarding_applications")
+    .select("id")
+    .ilike("applicant_email", e)
+    .order("submitted_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   if (error) return null;
-  return data?.session?.access_token ?? null;
+  return data?.id ?? null;
 }
 
-type ProvisionResponse =
-  | { ok: true; app_id?: string | null }
-  | { ok: false; error?: string | null };
-
-async function callProvisioningEdge(token: string, appId: string | null): Promise<ProvisionResponse> {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  const res = await fetch(`${base}/functions/v1/admissions-complete-provisioning`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: anon,
-      authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ app_id: appId }),
-  });
-
-  let j: any = null;
-  try {
-    j = await res.json();
-  } catch {
-    // ignore
-  }
-
-  if (!res.ok) return { ok: false, error: j?.error || `HTTP_${res.status}` };
-  if (!j?.ok) return { ok: false, error: j?.error || "unknown_error" };
-
-  return { ok: true, app_id: j?.app_id ?? null };
+function extractRpcErrorMessage(err: any): string {
+  if (!err) return "unknown_error";
+  // supabase-js errors often include message + details/hint
+  const msg = err.message || err.error_description || err.error || "RPC_FAILED";
+  const details = err.details ? ` — ${err.details}` : "";
+  const hint = err.hint ? ` — ${err.hint}` : "";
+  return `${msg}${details}${hint}`;
 }
 
 export default function SetPasswordPage() {
@@ -156,7 +150,7 @@ export default function SetPasswordPage() {
     type?: string | null;
   } | null>(null);
 
-  // app context (badge-critical)
+  // badge-critical
   const [appId, setAppId] = useState<string | null>(null);
   const [appIdSource, setAppIdSource] = useState<AppIdSource>("none");
 
@@ -227,47 +221,78 @@ export default function SetPasswordPage() {
     if (!a || a.length < 8) return setStatus("Password must be at least 8 characters.");
     if (a !== b) return setStatus("Passwords do not match.");
 
-    // Guard: if appId exists but not UUID, warn early
+    // If appId exists but not UUID, we still allow password set (never block),
+    // but we'll ignore invalid appId for provisioning.
     if (appId && !isUuidLike(appId)) {
-      return setStatus(
-        'Invalid app_id format. Expected a UUID (example: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx").'
-      );
+      setStatus("Password will be set. Provisioning context in link is invalid; resolving safely…");
     }
 
     setBusy(true);
 
     try {
-      // 1) Set password
+      // 1) Set password (invite/reset link should have established a session)
       const { error } = await supabase.auth.updateUser({ password: a });
       if (error) throw error;
 
-      // 2) Confirm we have a session token (needed to call Edge Function)
-      const token = await getAccessTokenOrNull();
-      if (!token) {
+      // 2) Get user (we need p_user_id + email fallback)
+      const { data: userRes, error: userErr } = await supabase.auth.getUser();
+      if (userErr) throw userErr;
+
+      const userId = userRes?.user?.id ?? null;
+      const email = (userRes?.user?.email || "").trim().toLowerCase();
+
+      if (!userId) {
         setStatus(
           "Password set, but session was not established. Please open the newest invite email and try again."
         );
         return;
       }
 
-      // 3) Provision via Edge Function (it resolves app_id if missing + completes provisioning)
+      // 3) Determine effective app_id (badge must show it)
       setStatus("Password set. Resolving provisioning context…");
 
-      const effectiveAppId = appId && isUuidLike(appId) ? appId : null;
-      const out = await callProvisioningEdge(token, effectiveAppId);
+      let effectiveAppId: string | null = appId && isUuidLike(appId) ? appId : null;
 
-      if (!out.ok) {
-        setStatus(`Provisioning failed: ${out.error || "unknown_error"}`);
+      if (!effectiveAppId) {
+        if (!email) {
+          setStatus(
+            "Password set, but we could not resolve your email from session. Please re-open the newest invite and try again."
+          );
+          return;
+        }
+
+        const resolved = await resolveLatestAppIdByEmail(email);
+        if (resolved && isUuidLike(resolved)) {
+          effectiveAppId = resolved;
+
+          // badge update immediately (trust requirement)
+          setAppId(resolved);
+          setAppIdSource("resolved");
+          try {
+            sessionStorage.setItem("oasis_app_id", resolved);
+          } catch {}
+        } else {
+          setStatus(
+            "Password set. Could not resolve application context yet. If you just applied, wait 10 seconds and refresh. Otherwise, re-issue the invite from Admissions."
+          );
+          return;
+        }
+      }
+
+      // 4) ✅ Canonical provisioning call (SQL expects p_application_id + p_user_id)
+      const { data: prov, error: provErr } = await supabase.rpc("admissions_complete_provisioning", {
+        p_application_id: effectiveAppId,
+        p_user_id: userId,
+      });
+
+      if (provErr) {
+        setStatus(`Provisioning failed: ${extractRpcErrorMessage(provErr)}`);
         return;
       }
 
-      // 4) Badge update (must show app_id if returned)
-      if (out.app_id && isUuidLike(out.app_id)) {
-        setAppId(out.app_id);
-        setAppIdSource("resolved");
-        try {
-          sessionStorage.setItem("oasis_app_id", out.app_id);
-        } catch {}
+      if (prov && (prov as any).ok === false) {
+        setStatus(`Provisioning failed: ${(prov as any).error || "unknown_error"}`);
+        return;
       }
 
       setStatus("Password set. Account activated.");
