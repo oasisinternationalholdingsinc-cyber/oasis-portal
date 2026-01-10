@@ -21,10 +21,11 @@ export default function LoginPage() {
       });
       if (error) throw error;
 
-      // middleware will now see the session
-      window.location.href = "/";
+      // ✅ after auth, go to the authenticated client launchpad
+      // (middleware will now see the session)
+      window.location.href = "/client";
     } catch (e: any) {
-      setMsg(e.message || "Access denied");
+      setMsg(e?.message || "Access denied");
     } finally {
       setBusy(false);
     }
@@ -44,7 +45,7 @@ export default function LoginPage() {
 
       setMsg("Secure access link sent.");
     } catch (e: any) {
-      setMsg(e.message || "Unable to send link");
+      setMsg(e?.message || "Unable to send link");
     } finally {
       setBusy(false);
     }
@@ -54,33 +55,20 @@ export default function LoginPage() {
     <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
       {/* LOCKED SYSTEM VISIBILITY */}
       <div className="space-y-4 opacity-60 lg:col-span-2">
-        {["Digital Parliament Ledger", "AXIOM Intelligence", "Client Workspace"].map(
-          (t) => (
-            <div
-              key={t}
-              className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-6"
-            >
-              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-                Restricted
-              </div>
-              <div className="mt-2 text-xl font-semibold">{t}</div>
-              <div className="mt-2 text-sm text-zinc-400">
-                Admission required
-              </div>
-            </div>
-          )
-        )}
+        {["Digital Parliament Ledger", "AXIOM Intelligence", "Client Workspace"].map((t) => (
+          <div key={t} className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-6">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">Restricted</div>
+            <div className="mt-2 text-xl font-semibold">{t}</div>
+            <div className="mt-2 text-sm text-zinc-400">Admission required</div>
+          </div>
+        ))}
       </div>
 
       {/* ACCESS WINDOW */}
       <div className="rounded-3xl border border-white/10 bg-black/40 p-8 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
-        <div className="text-[11px] uppercase tracking-[0.22em] text-amber-300">
-          Client Access
-        </div>
+        <div className="text-[11px] uppercase tracking-[0.22em] text-amber-300">Client Access</div>
         <div className="mt-2 text-2xl font-semibold">Authenticate</div>
-        <div className="mt-2 text-sm text-zinc-400">
-          This environment is admission-based.
-        </div>
+        <div className="mt-2 text-sm text-zinc-400">This environment is admission-based.</div>
 
         <div className="mt-6 space-y-4">
           <input
@@ -88,6 +76,7 @@ export default function LoginPage() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
           />
 
           <input
@@ -96,6 +85,7 @@ export default function LoginPage() {
             type="password"
             value={pw}
             onChange={(e) => setPw(e.target.value)}
+            autoComplete="current-password"
           />
 
           {msg && (
@@ -109,7 +99,7 @@ export default function LoginPage() {
             disabled={busy}
             className="w-full rounded-xl bg-amber-300 px-4 py-3 text-sm font-semibold text-black"
           >
-            Authenticate
+            {busy ? "Authenticating…" : "Authenticate"}
           </button>
 
           <button
