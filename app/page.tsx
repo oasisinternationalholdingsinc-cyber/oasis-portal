@@ -50,13 +50,15 @@ const TILES: Tile[] = [
       "Institutional boundary, governance authority, and public trust surface of the Oasis ecosystem.",
     href: "https://oasisintlholdings.com",
   },
+
+  // ✅ STEP 1: Replace public “Ledger” entry point with Client Access → /login
   {
-    eyebrow: "Institutional System",
-    title: "Digital Parliament Ledger",
+    eyebrow: "Client Portal",
+    title: "Client Access",
     description:
-      "Canonical system of record for Oasis governance. Access is role-gated and admission-based.",
+      "Authenticate to enter the private client launchpad. Admission-based access to institutional systems and document exchange.",
     href: "/login",
-    tag: "Authorized",
+    tag: "Private",
   },
 ];
 
@@ -66,12 +68,12 @@ export default function LaunchpadPage() {
       {/* HERO */}
       <section className="max-w-3xl">
         <h1 className="text-3xl font-semibold text-zinc-100">
-          Official access to verification, certificates, onboarding — and the
-          institutional ledger.
+          Official access to verification, certificates, and onboarding.
         </h1>
         <p className="mt-4 text-sm leading-6 text-zinc-400">
-          This gateway routes to sovereign authority surfaces. No records are
-          created here. Authority actions execute on dedicated terminals.
+          This gateway routes to sovereign authority surfaces. No records are created
+          here. Authority actions execute on dedicated terminals. Client systems are
+          accessed through the private portal.
         </p>
       </section>
 
@@ -87,9 +89,7 @@ export default function LaunchpadPage() {
             </div>
 
             <div className="mt-2 flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold text-zinc-100">
-                {t.title}
-              </h3>
+              <h3 className="text-lg font-semibold text-zinc-100">{t.title}</h3>
               {t.tag && (
                 <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
                   {t.tag}
@@ -97,9 +97,7 @@ export default function LaunchpadPage() {
               )}
             </div>
 
-            <p className="mt-3 text-sm leading-6 text-zinc-400">
-              {t.description}
-            </p>
+            <p className="mt-3 text-sm leading-6 text-zinc-400">{t.description}</p>
 
             <Link
               href={t.href}
@@ -113,8 +111,8 @@ export default function LaunchpadPage() {
 
       {/* FOOTNOTE */}
       <div className="mt-20 text-center text-xs text-zinc-500">
-        This gateway performs no operations. Verification and certificates
-        resolve on sovereign surfaces.
+        This gateway performs no operations. Verification and certificates resolve on
+        sovereign surfaces.
       </div>
     </main>
   );
