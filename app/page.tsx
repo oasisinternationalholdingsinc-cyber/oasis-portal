@@ -16,7 +16,7 @@ const TILES: Tile[] = [
     title: "Sign",
     description:
       "Execute authorized signing ceremonies on sovereign terminals. Signing occurs only on dedicated surfaces.",
-    href: "https://sign.oasisintlholdings.com",
+    href: "https://sign.oasisintlholdings.com/sign.html",
     tag: "Terminal",
   },
   {
