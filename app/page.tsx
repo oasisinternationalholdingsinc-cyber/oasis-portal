@@ -1,122 +1,121 @@
 "use client";
 
-import { useState } from "react";
-import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import Link from "next/link";
 
-const supabase = supabaseBrowser();
+type Tile = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  href: string;
+  tag?: string;
+};
 
-// ===== Main (CONTENT ONLY — NO HEADER/FOOTER; layout.tsx owns OS chrome) =====
-export default function LoginLockedOS() {
-  const [email, setEmail] = useState("");
-  const [pw, setPw] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+const TILES: Tile[] = [
+  {
+    eyebrow: "Authority Terminal",
+    title: "Sign",
+    description:
+      "Execute authorized signing ceremonies on sovereign terminals. Signing occurs only on dedicated surfaces.",
+    href: "https://sign.oasisintlholdings.com",
+    tag: "Terminal",
+  },
+  {
+    eyebrow: "Authority Terminal",
+    title: "Verify",
+    description:
+      "Verify the authenticity and registration status of an official record using its ledger hash or envelope reference.",
+    href: "https://sign.oasisintlholdings.com/verify.html",
+    tag: "Read-only",
+  },
+  {
+    eyebrow: "Authority Terminal",
+    title: "Certificate",
+    description:
+      "View or download an official certificate associated with a verified record.",
+    href: "https://sign.oasisintlholdings.com/certificate.html",
+    tag: "Certified",
+  },
+  {
+    eyebrow: "Admissions Surface",
+    title: "Onboarding",
+    description:
+      "Begin formal onboarding into the Oasis governance ecosystem. Intake occurs on a separate admissions surface.",
+    href: "https://onboarding.oasisintlholdings.com",
+    tag: "Intake",
+  },
+  {
+    eyebrow: "Institution",
+    title: "Oasis International Holdings",
+    description:
+      "Institutional boundary, governance authority, and public trust surface of the Oasis ecosystem.",
+    href: "https://oasisintlholdings.com",
+  },
+  {
+    eyebrow: "Institutional System",
+    title: "Digital Parliament Ledger",
+    description:
+      "Canonical system of record for Oasis governance. Access is role-gated and admission-based.",
+    href: "/login",
+    tag: "Authorized",
+  },
+];
 
-  async function signIn() {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password: pw,
-      });
-      if (error) throw error;
-      window.location.href = "/";
-    } catch (e: any) {
-      setMsg(e?.message || "Access denied.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function magicLink() {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim().toLowerCase(),
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) throw error;
-      setMsg("Secure link sent.");
-    } catch (e: any) {
-      setMsg(e?.message || "Unable to send link.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
+export default function LaunchpadPage() {
   return (
-    <div className="mx-auto max-w-6xl px-6 py-16 grid grid-cols-1 lg:grid-cols-3 gap-8">
-      {/* Locked OS Tiles */}
-      <div className="lg:col-span-2 space-y-4 opacity-60">
-        {["Digital Parliament Ledger", "AXIOM Intelligence", "Client Workspace"].map((t) => (
-          <div key={t} className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-6">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">Restricted</div>
-            <div className="mt-2 text-xl font-semibold text-zinc-100">{t}</div>
-            <div className="mt-2 text-sm text-zinc-400">Admission required</div>
+    <main className="mx-auto max-w-6xl px-6 py-20">
+      {/* HERO */}
+      <section className="max-w-3xl">
+        <h1 className="text-3xl font-semibold text-zinc-100">
+          Official access to verification, certificates, onboarding — and the
+          institutional ledger.
+        </h1>
+        <p className="mt-4 text-sm leading-6 text-zinc-400">
+          This gateway routes to sovereign authority surfaces. No records are
+          created here. Authority actions execute on dedicated terminals.
+        </p>
+      </section>
+
+      {/* GRID */}
+      <section className="mt-14 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {TILES.map((t) => (
+          <div
+            key={t.title}
+            className="group relative rounded-2xl border border-white/10 bg-black/30 p-6 transition hover:border-amber-300/30 hover:bg-black/40"
+          >
+            <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
+              {t.eyebrow}
+            </div>
+
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold text-zinc-100">
+                {t.title}
+              </h3>
+              {t.tag && (
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                  {t.tag}
+                </span>
+              )}
+            </div>
+
+            <p className="mt-3 text-sm leading-6 text-zinc-400">
+              {t.description}
+            </p>
+
+            <Link
+              href={t.href}
+              className="mt-6 inline-flex items-center rounded-xl bg-amber-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-amber-200"
+            >
+              Open
+            </Link>
           </div>
         ))}
+      </section>
+
+      {/* FOOTNOTE */}
+      <div className="mt-20 text-center text-xs text-zinc-500">
+        This gateway performs no operations. Verification and certificates
+        resolve on sovereign surfaces.
       </div>
-
-      {/* Access Window */}
-      <div className="rounded-3xl border border-white/10 bg-black/40 p-8 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
-        <div className="text-[11px] uppercase tracking-[0.22em] text-amber-300">Client Access</div>
-        <div className="mt-2 text-2xl font-semibold text-zinc-100">Authenticate</div>
-        <div className="mt-2 text-sm text-zinc-400">This environment is admission-based.</div>
-
-        <div className="mt-6 space-y-4">
-          <input
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-amber-300/40 focus:ring-2 focus:ring-amber-300/10"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-          />
-          <input
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-amber-300/40 focus:ring-2 focus:ring-amber-300/10"
-            placeholder="Password"
-            type="password"
-            value={pw}
-            onChange={(e) => setPw(e.target.value)}
-            autoComplete="current-password"
-          />
-
-          {msg && (
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-200">
-              {msg}
-            </div>
-          )}
-
-          <button
-            onClick={signIn}
-            disabled={busy}
-            className={[
-              "w-full rounded-xl px-4 py-3 text-sm font-semibold transition",
-              busy
-                ? "cursor-not-allowed border border-white/10 bg-zinc-900/40 text-zinc-400"
-                : "bg-amber-300 text-black hover:bg-amber-200",
-            ].join(" ")}
-          >
-            {busy ? "Entering…" : "Enter"}
-          </button>
-
-          <button
-            onClick={magicLink}
-            disabled={busy}
-            className={[
-              "w-full rounded-xl border px-4 py-3 text-sm transition",
-              busy
-                ? "cursor-not-allowed border-white/10 bg-zinc-900/30 text-zinc-500"
-                : "border-white/10 bg-transparent text-zinc-100 hover:bg-white/5",
-            ].join(" ")}
-          >
-            Email Secure Link
-          </button>
-        </div>
-      </div>
-    </div>
+    </main>
   );
 }
