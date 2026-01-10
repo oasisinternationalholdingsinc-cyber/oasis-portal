@@ -1,12 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = supabaseBrowser();
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -23,6 +20,8 @@ export default function LoginPage() {
         password: pw,
       });
       if (error) throw error;
+
+      // middleware will now see the session
       window.location.href = "/";
     } catch (e: any) {
       setMsg(e.message || "Access denied");
@@ -42,6 +41,7 @@ export default function LoginPage() {
         },
       });
       if (error) throw error;
+
       setMsg("Secure access link sent.");
     } catch (e: any) {
       setMsg(e.message || "Unable to send link");
@@ -51,9 +51,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
       {/* LOCKED SYSTEM VISIBILITY */}
-      <div className="lg:col-span-2 space-y-4 opacity-60">
+      <div className="space-y-4 opacity-60 lg:col-span-2">
         {["Digital Parliament Ledger", "AXIOM Intelligence", "Client Workspace"].map(
           (t) => (
             <div
@@ -89,6 +89,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
+
           <input
             className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
             placeholder="Password"

@@ -1,15 +1,10 @@
 "use client";
 
 import type React from "react";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  { auth: { persistSession: true, autoRefreshToken: true } }
-);
+const supabase = supabaseBrowser();
 
 // ===== Utilities =====
 function pad2(n: number) {
@@ -79,10 +74,7 @@ export default function LoginLockedOS() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const clock = useMemo(
-    () =>
-      `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(
-        now.getSeconds()
-      )}`,
+    () => `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`,
     [now]
   );
 
@@ -153,9 +145,7 @@ export default function LoginLockedOS() {
             <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
               System Time
             </div>
-            <div className="font-mono text-xs tabular-nums text-zinc-300">
-              {clock}
-            </div>
+            <div className="font-mono text-xs tabular-nums text-zinc-300">{clock}</div>
           </div>
         </div>
       </div>
@@ -164,22 +154,18 @@ export default function LoginLockedOS() {
       <main className="mx-auto max-w-6xl px-6 py-16 grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Locked OS Tiles */}
         <div className="lg:col-span-2 space-y-4 opacity-60">
-          {["Digital Parliament Ledger", "AXIOM Intelligence", "Client Workspace"].map(
-            (t) => (
-              <div
-                key={t}
-                className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-6"
-              >
-                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-                  Restricted
-                </div>
-                <div className="mt-2 text-xl font-semibold">{t}</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Admission required
-                </div>
+          {["Digital Parliament Ledger", "AXIOM Intelligence", "Client Workspace"].map((t) => (
+            <div
+              key={t}
+              className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-6"
+            >
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">
+                Restricted
               </div>
-            )
-          )}
+              <div className="mt-2 text-xl font-semibold">{t}</div>
+              <div className="mt-2 text-sm text-zinc-400">Admission required</div>
+            </div>
+          ))}
         </div>
 
         {/* ACCESS WINDOW */}
@@ -188,9 +174,7 @@ export default function LoginLockedOS() {
             Client Access
           </div>
           <div className="mt-2 text-2xl font-semibold">Authenticate</div>
-          <div className="mt-2 text-sm text-zinc-400">
-            This environment is admission-based.
-          </div>
+          <div className="mt-2 text-sm text-zinc-400">This environment is admission-based.</div>
 
           <div className="mt-6 space-y-4">
             <input

@@ -1,13 +1,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  { auth: { persistSession: true, autoRefreshToken: true } }
-);
+const supabase = supabaseBrowser();
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -164,13 +160,16 @@ export default function SetPasswordPage() {
 
       if (!userId || !email) return setStatus("Session not established.");
 
-      let effectiveAppId = appId && isUuidLike(appId) ? appId : await resolveLatestAppIdByEmail(email);
+      let effectiveAppId =
+        appId && isUuidLike(appId) ? appId : await resolveLatestAppIdByEmail(email);
       if (!effectiveAppId) return setStatus("Provisioning context unresolved.");
 
-      await supabase.rpc("admissions_complete_provisioning", {
+      const { error: rpcErr } = await supabase.rpc("admissions_complete_provisioning", {
         p_application_id: effectiveAppId,
         p_user_id: userId,
       });
+
+      if (rpcErr) return setStatus(extractRpcErrorMessage(rpcErr));
 
       window.location.href = "/";
     } catch (e: any) {
