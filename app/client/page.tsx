@@ -39,9 +39,38 @@ function cx(...xs: Array<string | false | null | undefined>) {
 function formatPrincipalEmail(email?: string | null) {
   const e = (email || "").trim();
   if (!e) return "—";
-  // Keep it institutional: show full email unless extremely long.
   if (e.length <= 34) return e;
   return `${e.slice(0, 16)}…${e.slice(-12)}`;
+}
+
+/**
+ * Console Instrument: compact readout chip.
+ * (No wiring changes — presentation only.)
+ */
+function InstrumentChip({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "good" | "warn";
+}) {
+  const toneClass =
+    tone === "good"
+      ? "border-amber-300/25 bg-amber-950/10 text-zinc-100"
+      : tone === "warn"
+      ? "border-red-500/25 bg-red-950/10 text-zinc-100"
+      : "border-white/10 bg-black/25 text-zinc-100";
+
+  return (
+    <div className={cx("rounded-xl border px-3 py-2", toneClass)}>
+      <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-semibold">{value}</div>
+    </div>
+  );
 }
 
 function TileCard({
@@ -115,29 +144,77 @@ function TileCard({
   return <Link href={href}>{content}</Link>;
 }
 
-function StatusCard({
-  label,
-  value,
-  tone = "neutral",
+/**
+ * Console Gate Module: dominant, inevitable handoff into the Ledger.
+ * (No wiring changes — same href, same external behavior.)
+ */
+function GateCard({
+  eyebrow,
+  title,
+  description,
+  href,
+  badge,
+  cta = "Enter",
+  disabled,
 }: {
-  label: string;
-  value: string;
-  tone?: "neutral" | "good" | "warn";
+  eyebrow: string;
+  title: string;
+  description: string;
+  href?: string;
+  badge?: string;
+  cta?: string;
+  disabled?: boolean;
 }) {
-  const toneClass =
-    tone === "good"
-      ? "border-amber-300/20 bg-amber-950/15"
-      : tone === "warn"
-      ? "border-red-500/20 bg-red-950/15"
-      : "border-white/10 bg-black/25";
+  const shell =
+    "rounded-2xl border border-white/10 bg-black/35 p-7 shadow-[0_24px_90px_rgba(0,0,0,0.70)]";
+  const hover = disabled
+    ? "opacity-60 cursor-not-allowed"
+    : "hover:border-amber-300/35 hover:bg-black/45 hover:shadow-[0_0_0_1px_rgba(250,204,21,0.22),0_30px_100px_rgba(0,0,0,0.75)]";
+
+  const content = (
+    <div className={cx("group transition", shell, hover)}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.24em] text-amber-300/90">
+            {eyebrow}
+          </div>
+          <div className="mt-2 text-2xl font-semibold text-zinc-100">{title}</div>
+        </div>
+
+        {badge ? (
+          <div className="rounded-full border border-amber-300/20 bg-amber-950/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-amber-200/90">
+            {badge}
+          </div>
+        ) : null}
+      </div>
+
+      <p className="mt-3 text-sm leading-6 text-zinc-400">{description}</p>
+
+      <div className="mt-7 flex items-center gap-3">
+        <div
+          className={cx(
+            "inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold transition",
+            disabled
+              ? "border border-white/10 bg-zinc-900/40 text-zinc-400"
+              : "bg-amber-300 text-black hover:bg-amber-200"
+          )}
+        >
+          {disabled ? "Offline" : cta}
+        </div>
+
+        <div className="text-[11px] text-zinc-500">
+          {disabled ? "Unavailable" : "Authorized entry — opens in a new tab"}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (disabled || !href) return content;
 
   return (
-    <div className={cx("rounded-2xl border p-5", toneClass)}>
-      <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-        {label}
-      </div>
-      <div className="mt-2 text-sm font-semibold text-zinc-100">{value}</div>
-    </div>
+    <a href={href} target="_blank" rel="noreferrer">
+      {content}
+    </a>
   );
 }
 
@@ -148,8 +225,7 @@ function HeaderSessionPill({
   email: string;
   onSignOut: () => void;
 }) {
-  // This is CONTENT-ONLY. It does not replace your OS sticky header.
-  // It reinforces "production mode" inside the client surface with identity + exit.
+  // Content-only reinforcement (identity + exit). Does not replace OS sticky header.
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
       <div className="flex items-center gap-3">
@@ -183,7 +259,6 @@ export default function ClientLaunchpadPage() {
   useEffect(() => {
     let mounted = true;
 
-    // Initial resolve (client truth)
     sb.auth
       .getUser()
       .then(({ data }) => {
@@ -195,7 +270,6 @@ export default function ClientLaunchpadPage() {
         setAuthEmail(null);
       });
 
-    // Live updates (login/logout/token refresh)
     const {
       data: { subscription },
     } = sb.auth.onAuthStateChange((_event, session) => {
@@ -210,33 +284,29 @@ export default function ClientLaunchpadPage() {
   }, [sb]);
 
   async function handleSignOut() {
-    // No wiring changes elsewhere: this is a standard supabase sign-out.
     await sb.auth.signOut();
   }
 
-  const primaryTiles: Tile[] = [
-    {
-      eyebrow: "Institutional System",
-      title: "Digital Parliament Ledger",
-      description:
-        "Canonical system of record for governance. Access is admission-based and role-gated.",
-      href: LEDGER_URL,
-      external: true,
-      badge: "Authorized",
-      cta: "Open Ledger",
-      disabled: !LEDGER_URL,
-    },
-    {
-      eyebrow: "Evidence Exchange",
-      title: "Upload Documents",
-      description:
-        "Submit requested evidence and operational documents. Execution does not occur on this surface.",
-      href: "/client/upload",
-      badge: "Private",
-      cta: "Upload",
-      disabled: true, // enable once /client/upload exists
-    },
-  ];
+  // Console readouts (instrumentation > cards)
+  const accessValue = authEmail ? "Authenticated" : "Unauthenticated";
+  const accessTone: "good" | "warn" = authEmail ? "good" : "warn";
+
+  const provisionValue = authEmail ? "Active" : "Inactive";
+  const provisionTone: "good" | "warn" = authEmail ? "good" : "warn";
+
+  const evidenceValue = authEmail ? "0 pending" : "Sign in required";
+  const evidenceTone: "neutral" | "warn" = authEmail ? "neutral" : "warn";
+
+  const primaryUpload: Tile = {
+    eyebrow: "Evidence Exchange",
+    title: "Upload Documents",
+    description:
+      "Submit requested evidence and operational documents. Execution does not occur on this surface.",
+    href: "/client/upload",
+    badge: "Private",
+    cta: "Upload",
+    disabled: true, // enable once /client/upload exists
+  };
 
   const secondaryTiles: Tile[] = [
     {
@@ -262,104 +332,104 @@ export default function ClientLaunchpadPage() {
       href: AXIOM_URL || undefined,
       external: true,
       badge: "Read-only",
-      disabled: !AXIOM_URL, // stays hidden/off unless you set env
+      disabled: !AXIOM_URL,
     },
   ];
-
-  // Production tone: declarative, fewer explanations. Let state speak.
-  const accessValue = authEmail ? "Authenticated" : "Unauthenticated";
-  const accessTone: "good" | "warn" = authEmail ? "good" : "warn";
-
-  const provisionValue = authEmail ? "Provisioned / Active" : "Not provisioned";
-  const evidenceValue = authEmail ? "No pending requests" : "Sign in required";
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-14">
       {/* HERO */}
       <section className="max-w-3xl">
         <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
-          Client Workspace
+          Client Console
         </div>
         <h1 className="mt-3 text-3xl font-semibold text-zinc-100">
           Private access to institutional systems and secure document exchange.
         </h1>
         <p className="mt-4 text-sm leading-6 text-zinc-400">
-          This surface is admission-based. Signing and verification remain
-          terminal-bound.
+          Admission surface. Signing and verification remain terminal-bound.
         </p>
 
-        {/* SESSION PILL (ONLY WHEN AUTHENTICATED) */}
+        {/* SESSION (ONLY WHEN AUTHENTICATED) */}
         {authEmail ? (
           <div className="mt-6">
             <HeaderSessionPill email={authEmail} onSignOut={handleSignOut} />
           </div>
         ) : null}
-      </section>
 
-      {/* 3-ZONE BODY */}
-      <section className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-3">
-        {/* LEFT: Status */}
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
-              System Status
-            </div>
-            <div className="mt-2 text-sm text-zinc-400">
-              Operational surface
-            </div>
-          </div>
-
-          <StatusCard label="Access" value={accessValue} tone={accessTone} />
-          <StatusCard
+        {/* PREFLIGHT / INSTRUMENT STRIP */}
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <InstrumentChip label="Access" value={accessValue} tone={accessTone} />
+          <InstrumentChip
             label="Provisioning"
             value={provisionValue}
-            tone="neutral"
+            tone={provisionTone}
           />
-          <StatusCard
+          <InstrumentChip
             label="Evidence Inbox"
             value={evidenceValue}
-            tone="neutral"
+            tone={evidenceTone}
           />
+        </div>
+      </section>
 
+      {/* CONSOLE BODY: axial, not democratic */}
+      <section className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-3">
+        {/* LEFT: Support surfaces (quiet) */}
+        <div className="space-y-4">
           <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
             <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-              Support
+              Support Channel
             </div>
             <div className="mt-2 text-sm text-zinc-400">
               Evidence and communications surfaces activate by mandate.
             </div>
           </div>
+
+          <TileCard {...primaryUpload} />
+
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+              Subsystems
+            </div>
+            <div className="mt-2 text-sm text-zinc-400">
+              Workspace channels remain inactive until engaged.
+            </div>
+          </div>
         </div>
 
-        {/* CENTER: Primary Actions */}
+        {/* CENTER: Gate / Handoff (dominant) */}
         <div className="space-y-4 lg:col-span-1">
           <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
             <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
-              Primary Actions
+              Ingress
             </div>
             <div className="mt-2 text-sm text-zinc-400">
-              Institutional systems and evidence exchange.
+              Authorized entry to the institutional record.
             </div>
           </div>
 
-          {primaryTiles.map((t) => (
-            <TileCard key={t.title} {...t} />
-          ))}
+          <GateCard
+            eyebrow="Institutional Record"
+            title="Enter Digital Parliament Ledger"
+            description="Canonical system of record for governance. Access is admission-based and role-gated."
+            href={LEDGER_URL}
+            badge="Authorized"
+            cta="Enter Ledger"
+            disabled={!LEDGER_URL}
+          />
         </div>
 
-        {/* RIGHT: Authority Panel */}
+        {/* RIGHT: Rules placard (law-like, quieter than the gate) */}
         <div className="space-y-4">
           <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
             <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
-              Authority Boundary
+              Authority Rules
             </div>
-            <div className="mt-3 space-y-3 text-sm leading-6 text-zinc-400">
-              <p>Execution does not occur in this portal.</p>
-              <p>Signing ceremonies run only on sovereign terminals.</p>
-              <p>
-                Verification and certificates resolve on dedicated authority
-                surfaces.
-              </p>
+            <div className="mt-3 space-y-2 text-sm leading-6 text-zinc-400">
+              <div>• No execution occurs in this portal.</div>
+              <div>• Signing runs only on sovereign terminals.</div>
+              <div>• Verification and certificates resolve on authority surfaces.</div>
             </div>
 
             <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-950/10 p-4">
@@ -373,40 +443,38 @@ export default function ClientLaunchpadPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
             <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-              Coming Online
+              Inactive Channels
             </div>
             <div className="mt-2 text-sm text-zinc-400">
-              Messages, requests, and evidence workflows activate as needed.
+              Messages, requests, and evidence workflows engage as needed.
             </div>
           </div>
         </div>
       </section>
 
-      {/* SECONDARY GRID */}
-      <section className="mt-10">
-        <div className="mb-4 flex items-end justify-between gap-4">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-              Additional Surfaces
-            </div>
-            <div className="mt-1 text-sm text-zinc-400">
-              Present but restrained. Enabled by mandate.
-            </div>
+      {/* SECONDARY: Dormant surfaces (quiet, clearly secondary) */}
+      <section className="mt-12">
+        <div className="mb-4">
+          <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+            Dormant Surfaces
+          </div>
+          <div className="mt-1 text-sm text-zinc-400">
+            Present but restrained. Enabled by mandate.
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {secondaryTiles
-            .filter((t) => t.title !== "AXIOM" || AXIOM_URL) // keep hidden unless configured
+            .filter((t) => t.title !== "AXIOM" || AXIOM_URL)
             .map((t) => (
               <TileCard key={t.title} {...t} />
             ))}
         </div>
       </section>
 
-      {/* Footnote (content only; footer rail in layout) */}
+      {/* Footnote */}
       <div className="mt-14 text-center text-xs text-zinc-500">
         Portal performs no execution. Sovereign verification and signing remain
         terminal-bound.
