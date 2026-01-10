@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { supabaseBrowser as supabase } from "@/lib/supabaseBrowser";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 type Tile = {
   eyebrow: string;
@@ -177,11 +177,14 @@ function HeaderSessionPill({
 export default function ClientLaunchpadPage() {
   const [authEmail, setAuthEmail] = useState<string | null>(null);
 
+  // IMPORTANT: supabaseBrowser() returns a client. Resolve once per page load.
+  const sb = useMemo(() => supabaseBrowser(), []);
+
   useEffect(() => {
     let mounted = true;
 
     // Initial resolve (client truth)
-    supabase.auth
+    sb.auth
       .getUser()
       .then(({ data }) => {
         if (!mounted) return;
@@ -195,7 +198,7 @@ export default function ClientLaunchpadPage() {
     // Live updates (login/logout/token refresh)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = sb.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       setAuthEmail(session?.user?.email ?? null);
     });
@@ -204,11 +207,11 @@ export default function ClientLaunchpadPage() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [sb]);
 
   async function handleSignOut() {
     // No wiring changes elsewhere: this is a standard supabase sign-out.
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
   }
 
   const primaryTiles: Tile[] = [
@@ -239,7 +242,8 @@ export default function ClientLaunchpadPage() {
     {
       eyebrow: "Workspace",
       title: "Messages",
-      description: "Secure communications for evidence requests, updates, and next steps.",
+      description:
+        "Secure communications for evidence requests, updates, and next steps.",
       badge: "Coming Online",
       disabled: true,
     },
@@ -253,7 +257,8 @@ export default function ClientLaunchpadPage() {
     {
       eyebrow: "Intelligence Layer",
       title: "AXIOM",
-      description: "Read-only institutional context and signals. Advisory only; never blocks workflows.",
+      description:
+        "Read-only institutional context and signals. Advisory only; never blocks workflows.",
       href: AXIOM_URL || undefined,
       external: true,
       badge: "Read-only",
@@ -279,7 +284,8 @@ export default function ClientLaunchpadPage() {
           Private access to institutional systems and secure document exchange.
         </h1>
         <p className="mt-4 text-sm leading-6 text-zinc-400">
-          This surface is admission-based. Signing and verification remain terminal-bound.
+          This surface is admission-based. Signing and verification remain
+          terminal-bound.
         </p>
 
         {/* SESSION PILL (ONLY WHEN AUTHENTICATED) */}
@@ -298,12 +304,22 @@ export default function ClientLaunchpadPage() {
             <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
               System Status
             </div>
-            <div className="mt-2 text-sm text-zinc-400">Operational surface</div>
+            <div className="mt-2 text-sm text-zinc-400">
+              Operational surface
+            </div>
           </div>
 
           <StatusCard label="Access" value={accessValue} tone={accessTone} />
-          <StatusCard label="Provisioning" value={provisionValue} tone="neutral" />
-          <StatusCard label="Evidence Inbox" value={evidenceValue} tone="neutral" />
+          <StatusCard
+            label="Provisioning"
+            value={provisionValue}
+            tone="neutral"
+          />
+          <StatusCard
+            label="Evidence Inbox"
+            value={evidenceValue}
+            tone="neutral"
+          />
 
           <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
             <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
@@ -340,7 +356,10 @@ export default function ClientLaunchpadPage() {
             <div className="mt-3 space-y-3 text-sm leading-6 text-zinc-400">
               <p>Execution does not occur in this portal.</p>
               <p>Signing ceremonies run only on sovereign terminals.</p>
-              <p>Verification and certificates resolve on dedicated authority surfaces.</p>
+              <p>
+                Verification and certificates resolve on dedicated authority
+                surfaces.
+              </p>
             </div>
 
             <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-950/10 p-4">
@@ -348,7 +367,8 @@ export default function ClientLaunchpadPage() {
                 Institutional Discipline
               </div>
               <div className="mt-2 text-sm text-zinc-300">
-                Gold indicates verified state and authority actions — never decoration.
+                Gold indicates verified state and authority actions — never
+                decoration.
               </div>
             </div>
           </div>
@@ -388,7 +408,8 @@ export default function ClientLaunchpadPage() {
 
       {/* Footnote (content only; footer rail in layout) */}
       <div className="mt-14 text-center text-xs text-zinc-500">
-        Portal performs no execution. Sovereign verification and signing remain terminal-bound.
+        Portal performs no execution. Sovereign verification and signing remain
+        terminal-bound.
       </div>
     </main>
   );
