@@ -2,6 +2,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { supabaseBrowser as supabase } from "@/lib/supabaseBrowser";
 
 type Tile = {
   eyebrow: string;
@@ -32,6 +34,14 @@ const AXIOM_URL =
 
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
+}
+
+function formatPrincipalEmail(email?: string | null) {
+  const e = (email || "").trim();
+  if (!e) return "—";
+  // Keep it institutional: show full email unless extremely long.
+  if (e.length <= 34) return e;
+  return `${e.slice(0, 16)}…${e.slice(-12)}`;
 }
 
 function TileCard({
@@ -131,14 +141,82 @@ function StatusCard({
   );
 }
 
+function HeaderSessionPill({
+  email,
+  onSignOut,
+}: {
+  email: string;
+  onSignOut: () => void;
+}) {
+  // This is CONTENT-ONLY. It does not replace your OS sticky header.
+  // It reinforces "production mode" inside the client surface with identity + exit.
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="h-2 w-2 rounded-full bg-amber-300/90" />
+        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+          Session
+        </div>
+        <div className="text-sm font-semibold text-zinc-100">
+          {formatPrincipalEmail(email)}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onSignOut}
+        className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition hover:border-amber-300/25 hover:bg-black/30"
+      >
+        Sign out
+      </button>
+    </div>
+  );
+}
+
 // ===== Main (CONTENT ONLY — header/footer live in app/layout.tsx) =====
 export default function ClientLaunchpadPage() {
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    // Initial resolve (client truth)
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (!mounted) return;
+        setAuthEmail(data.user?.email ?? null);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setAuthEmail(null);
+      });
+
+    // Live updates (login/logout/token refresh)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setAuthEmail(session?.user?.email ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  async function handleSignOut() {
+    // No wiring changes elsewhere: this is a standard supabase sign-out.
+    await supabase.auth.signOut();
+  }
+
   const primaryTiles: Tile[] = [
     {
       eyebrow: "Institutional System",
       title: "Digital Parliament Ledger",
       description:
-        "Canonical system of record for governance. Access remains admission-based and role-gated.",
+        "Canonical system of record for governance. Access is admission-based and role-gated.",
       href: LEDGER_URL,
       external: true,
       badge: "Authorized",
@@ -149,7 +227,7 @@ export default function ClientLaunchpadPage() {
       eyebrow: "Evidence Exchange",
       title: "Upload Documents",
       description:
-        "Provide requested evidence and operational documents. No governance execution occurs on this surface.",
+        "Submit requested evidence and operational documents. Execution does not occur on this surface.",
       href: "/client/upload",
       badge: "Private",
       cta: "Upload",
@@ -161,30 +239,34 @@ export default function ClientLaunchpadPage() {
     {
       eyebrow: "Workspace",
       title: "Messages",
-      description:
-        "Secure communications for evidence requests, updates, and next steps.",
+      description: "Secure communications for evidence requests, updates, and next steps.",
       badge: "Coming Online",
       disabled: true,
     },
     {
       eyebrow: "Workspace",
       title: "Requests",
-      description:
-        "Structured requests for information or actions, with clear audit visibility.",
+      description: "Structured requests with clear status and audit visibility.",
       badge: "Coming Online",
       disabled: true,
     },
     {
       eyebrow: "Intelligence Layer",
       title: "AXIOM",
-      description:
-        "Read-only institutional context and signals. Advisory only; never blocks workflows.",
+      description: "Read-only institutional context and signals. Advisory only; never blocks workflows.",
       href: AXIOM_URL || undefined,
       external: true,
       badge: "Read-only",
       disabled: !AXIOM_URL, // stays hidden/off unless you set env
     },
   ];
+
+  // Production tone: declarative, fewer explanations. Let state speak.
+  const accessValue = authEmail ? "Authenticated" : "Unauthenticated";
+  const accessTone: "good" | "warn" = authEmail ? "good" : "warn";
+
+  const provisionValue = authEmail ? "Provisioned / Active" : "Not provisioned";
+  const evidenceValue = authEmail ? "No pending requests" : "Sign in required";
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-14">
@@ -197,9 +279,15 @@ export default function ClientLaunchpadPage() {
           Private access to institutional systems and secure document exchange.
         </h1>
         <p className="mt-4 text-sm leading-6 text-zinc-400">
-          This surface is authenticated and admission-based. No signing occurs in
-          the portal. Execution and verification remain sovereign.
+          This surface is admission-based. Signing and verification remain terminal-bound.
         </p>
+
+        {/* SESSION PILL (ONLY WHEN AUTHENTICATED) */}
+        {authEmail ? (
+          <div className="mt-6">
+            <HeaderSessionPill email={authEmail} onSignOut={handleSignOut} />
+          </div>
+        ) : null}
       </section>
 
       {/* 3-ZONE BODY */}
@@ -210,22 +298,19 @@ export default function ClientLaunchpadPage() {
             <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
               System Status
             </div>
-            <div className="mt-2 text-sm text-zinc-400">
-              Admission-based access surface
-            </div>
+            <div className="mt-2 text-sm text-zinc-400">Operational surface</div>
           </div>
 
-          <StatusCard label="Access" value="Authenticated" tone="good" />
-          <StatusCard label="Provisioning" value="Provisioned / Active" tone="neutral" />
-          <StatusCard label="Evidence Inbox" value="No pending requests" tone="neutral" />
+          <StatusCard label="Access" value={accessValue} tone={accessTone} />
+          <StatusCard label="Provisioning" value={provisionValue} tone="neutral" />
+          <StatusCard label="Evidence Inbox" value={evidenceValue} tone="neutral" />
 
           <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
             <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
               Support
             </div>
             <div className="mt-2 text-sm text-zinc-400">
-              If you received a request for evidence, use Upload Documents or reply via
-              Messages once enabled.
+              Evidence and communications surfaces activate by mandate.
             </div>
           </div>
         </div>
@@ -253,18 +338,9 @@ export default function ClientLaunchpadPage() {
               Authority Boundary
             </div>
             <div className="mt-3 space-y-3 text-sm leading-6 text-zinc-400">
-              <p>
-                This portal performs no governance execution. Signing ceremonies run only
-                on sovereign terminals.
-              </p>
-              <p>
-                Verification and certificates resolve on dedicated authority surfaces
-                with registered evidence.
-              </p>
-              <p className="text-zinc-500">
-                If you are here to provide evidence, use the Upload Documents surface
-                once enabled.
-              </p>
+              <p>Execution does not occur in this portal.</p>
+              <p>Signing ceremonies run only on sovereign terminals.</p>
+              <p>Verification and certificates resolve on dedicated authority surfaces.</p>
             </div>
 
             <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-950/10 p-4">
@@ -272,7 +348,7 @@ export default function ClientLaunchpadPage() {
                 Institutional Discipline
               </div>
               <div className="mt-2 text-sm text-zinc-300">
-                Gold indicates authority actions and verified state — not decoration.
+                Gold indicates verified state and authority actions — never decoration.
               </div>
             </div>
           </div>
@@ -282,8 +358,7 @@ export default function ClientLaunchpadPage() {
               Coming Online
             </div>
             <div className="mt-2 text-sm text-zinc-400">
-              Messages, requests, and evidence workflows will appear here as the system
-              expands.
+              Messages, requests, and evidence workflows activate as needed.
             </div>
           </div>
         </div>
@@ -297,7 +372,7 @@ export default function ClientLaunchpadPage() {
               Additional Surfaces
             </div>
             <div className="mt-1 text-sm text-zinc-400">
-              Present but restrained. Enabled as needed.
+              Present but restrained. Enabled by mandate.
             </div>
           </div>
         </div>
@@ -313,8 +388,7 @@ export default function ClientLaunchpadPage() {
 
       {/* Footnote (content only; footer rail in layout) */}
       <div className="mt-14 text-center text-xs text-zinc-500">
-        Portal performs no execution. Sovereign verification and signing remain
-        terminal-bound.
+        Portal performs no execution. Sovereign verification and signing remain terminal-bound.
       </div>
     </main>
   );
