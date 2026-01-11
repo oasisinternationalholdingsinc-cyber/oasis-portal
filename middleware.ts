@@ -4,19 +4,21 @@ import { createServerClient } from "@supabase/ssr";
 
 /**
  * Oasis Portal — Enterprise Auth Gate (NON-BLOCKING / SAFE)
- * - Public launchpad stays public.
- * - Auth surfaces stay public (callback + set-password).
- * - Only protected routes require a valid Supabase session.
- * - Cookie refresh is supported (setAll writes to response).
- * - Avoids infinite loops by:
- *    1) making /login public
- *    2) never redirecting to /login from /login
- *    3) preserving next= for return routing
+ *
+ * Guarantees:
+ * - Public launchpad (/) is ALWAYS public
+ * - Login, callback, set-password are ALWAYS public
+ * - Only protected routes require auth
+ * - No infinite redirect loops
+ * - Cookie refresh supported (SSR-safe)
+ * - next= destination preserved
+ *
+ * ❗ AUTH / SESSION WIRING IS FINAL — UI ONLY CHANGES BEYOND THIS POINT
  */
 
-// Public (no auth required)
+// Explicit public routes
 const PUBLIC_PATHS = [
-  "/", // ✅ public portal launchpad must NEVER require auth
+  "/", // public portal launchpad
   "/login",
   "/auth/callback",
   "/auth/set-password",
@@ -25,15 +27,14 @@ const PUBLIC_PATHS = [
   "/sitemap.xml",
 ];
 
-// Also allow any auth subroutes (defensive, future-proof)
+// Defensive prefixes (future-proof)
 const PUBLIC_PREFIXES = ["/auth"];
-
-// Also allow common public assets
 const ASSET_PREFIXES = ["/_next", "/assets"];
 
 function isPublicPath(pathname: string) {
   if (PUBLIC_PATHS.includes(pathname)) return true;
-  if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) return true;
+  if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/")))
+    return true;
   if (ASSET_PREFIXES.some((p) => pathname.startsWith(p))) return true;
   return false;
 }
@@ -41,10 +42,12 @@ function isPublicPath(pathname: string) {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ✅ Public routes are always accessible
-  if (isPublicPath(pathname)) return NextResponse.next();
+  // ✅ Always allow public routes
+  if (isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
 
-  // Prepare response so Supabase can set/refresh cookies
+  // Prepare response so Supabase can refresh cookies if needed
   const res = NextResponse.next({
     request: { headers: req.headers },
   });
@@ -64,12 +67,11 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // ✅ Reads the user via cookie session (server-side truth)
+  // Server-side truth: cookie-backed user
   const { data, error } = await supabase.auth.getUser();
   const user = data?.user ?? null;
 
-  // ✅ If not authenticated, send them to login
-  // (Preserve original destination)
+  // ❌ Not authenticated → redirect to login
   if (!user || error) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
@@ -77,11 +79,10 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // ✅ Authenticated: allow through (and cookie refresh writes to `res`)
+  // ✅ Authenticated → allow through (cookies refreshed via `res`)
   return res;
 }
 
 export const config = {
-  // Note: We already allow _next/assets/favicon above; matcher keeps scope broad.
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
