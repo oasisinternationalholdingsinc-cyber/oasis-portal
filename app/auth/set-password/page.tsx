@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+export const dynamic = "force-dynamic";
+
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
@@ -22,6 +24,7 @@ async function postJson(url: string, body: unknown, accessToken: string) {
     },
     body: JSON.stringify(body),
   });
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = (data && (data.error || data.message)) || `HTTP_${res.status}`;
@@ -30,11 +33,11 @@ async function postJson(url: string, body: unknown, accessToken: string) {
   return data;
 }
 
-export default function SetPasswordPage() {
+function SetPasswordInner() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const appId = sp.get("app_id"); // can be missing; backend can resolve by email if you implemented fallback
+  const appId = sp.get("app_id"); // may be missing; backend fallback can resolve by email
   const [step, setStep] = useState<Step>("BOOT");
   const [email, setEmail] = useState<string | null>(null);
 
@@ -46,7 +49,7 @@ export default function SetPasswordPage() {
 
   const canSubmit = useMemo(() => {
     if (step !== "READY") return false;
-    if (!pw1 || pw1.length < 10) return false; // firm but humane
+    if (!pw1 || pw1.length < 10) return false;
     if (pw1 !== pw2) return false;
     return true;
   }, [pw1, pw2, step]);
@@ -85,36 +88,31 @@ export default function SetPasswordPage() {
   async function onSubmit() {
     setErr(null);
     setOkMsg(null);
-
     if (!canSubmit) return;
 
     try {
       setStep("SAVING");
 
-      // 1) Update password under the authenticated session
+      // 1) update password
       const { error: updErr } = await supabase.auth.updateUser({ password: pw1 });
       if (updErr) throw new Error(updErr.message);
 
-      // 2) Get session token again (fresh)
+      // 2) refresh session token
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) throw new Error("MISSING_SESSION_AFTER_PASSWORD_UPDATE");
 
-      // 3) Call provisioning completion (Edge Function)
-      // IMPORTANT: Set this env in Vercel for portal:
-      // NEXT_PUBLIC_PROVISIONING_COMPLETE_URL=https://<project-ref>.functions.supabase.co/admissions-complete-provisioning
-      const fnUrl = process.env.NEXT_PUBLIC_PROVISIONING_COMPLETE_URL!;
-      const payload = appId ? { app_id: appId } : { app_id: null };
+      // 3) call provisioning completion Edge Function
+      const fnUrl = process.env.NEXT_PUBLIC_PROVISIONING_COMPLETE_URL;
+      if (!fnUrl) throw new Error("MISSING_ENV:NEXT_PUBLIC_PROVISIONING_COMPLETE_URL");
 
+      const payload = appId ? { app_id: appId } : { app_id: null };
       await postJson(fnUrl, payload, token);
 
       setOkMsg("Password set. Provisioning completed.");
       setStep("DONE");
 
-      // Optional: route to portal home or sign-in
-      setTimeout(() => {
-        router.replace("/");
-      }, 1200);
+      setTimeout(() => router.replace("/"), 1200);
     } catch (e) {
       setStep("READY");
       setErr(e instanceof Error ? e.message : "UNKNOWN_ERROR");
@@ -135,7 +133,7 @@ export default function SetPasswordPage() {
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
             <div className="text-lg text-white/90">Session not established</div>
             <div className="mt-2 text-sm text-white/70">
-              Please return to your invite email and open the link directly. If the link is expired, request a new invite.
+              Open the invite link directly from the email (fresh link). If expired, request a new invite.
             </div>
             <div className="mt-5 text-xs tracking-[0.18em] text-white/40">
               {email ? `Detected: ${email}` : "No session user detected."}
@@ -154,15 +152,10 @@ export default function SetPasswordPage() {
                     SESSION: <span className="text-white/70">{email}</span>
                   </div>
                 ) : null}
-                {appId ? (
-                  <div className="mt-1 text-xs tracking-[0.18em] text-white/45">
-                    APPLICATION: <span className="text-white/70">{appId}</span>
-                  </div>
-                ) : (
-                  <div className="mt-1 text-xs tracking-[0.18em] text-white/45">
-                    APPLICATION: <span className="text-white/70">auto-resolve (email)</span>
-                  </div>
-                )}
+                <div className="mt-1 text-xs tracking-[0.18em] text-white/45">
+                  APPLICATION:{" "}
+                  <span className="text-white/70">{appId ? appId : "auto-resolve (email)"}</span>
+                </div>
               </div>
 
               <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs tracking-[0.24em] text-white/70">
@@ -228,5 +221,25 @@ export default function SetPasswordPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function SetPasswordPage() {
+  // ✅ REQUIRED by Next.js when using useSearchParams()
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#05070d] text-white">
+          <div className="mx-auto max-w-3xl px-6 py-20">
+            <div className="text-xs tracking-[0.28em] text-[#d6b25e]">OASIS OS</div>
+            <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
+              Loading secure session…
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <SetPasswordInner />
+    </Suspense>
   );
 }

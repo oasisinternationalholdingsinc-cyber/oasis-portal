@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+export const dynamic = "force-dynamic";
+
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
@@ -11,7 +13,7 @@ const supabase = createClient(
 );
 
 function useClock() {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState<Date>(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
@@ -24,7 +26,7 @@ function fmtTime(d: Date) {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-export default function AuthCallbackPage() {
+function CallbackInner() {
   const router = useRouter();
   const sp = useSearchParams();
   const now = useClock();
@@ -56,7 +58,6 @@ export default function AuthCallbackPage() {
       try {
         setStatus("EXCHANGING");
 
-        // 1) If Supabase provided a PKCE code, exchange it for a session.
         if (code) {
           const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
           if (exErr) {
@@ -65,7 +66,6 @@ export default function AuthCallbackPage() {
           }
         }
 
-        // 2) Confirm session exists.
         const { data } = await supabase.auth.getSession();
         const hasSession = !!data.session?.access_token;
 
@@ -76,8 +76,9 @@ export default function AuthCallbackPage() {
 
         if (!cancelled) setStatus("SESSION_OK");
 
-        // 3) Route into set-password (keep app_id if present)
-        const dest = appId ? `/auth/set-password?app_id=${encodeURIComponent(appId)}` : `/auth/set-password`;
+        const dest = appId
+          ? `/auth/set-password?app_id=${encodeURIComponent(appId)}`
+          : `/auth/set-password`;
         router.replace(dest);
       } catch {
         if (!cancelled) setStatus("ERROR");
@@ -92,7 +93,6 @@ export default function AuthCallbackPage() {
 
   return (
     <div className="min-h-screen bg-[#05070d] text-white">
-      {/* Header */}
       <div className="sticky top-0 z-10 border-b border-white/10 bg-gradient-to-b from-black/40 to-transparent backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
           <div>
@@ -101,14 +101,12 @@ export default function AuthCallbackPage() {
               PUBLIC AUTHORITY GATEWAY
             </div>
           </div>
-
           <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs tracking-[0.24em] text-white/70">
             SYSTEM TIME <span className="ml-2 text-white/85">{fmtTime(now)}</span>
           </div>
         </div>
       </div>
 
-      {/* Body */}
       <div className="mx-auto flex max-w-3xl flex-col items-center px-6 py-24 text-center">
         <div className="mb-4 text-sm tracking-[0.22em] text-white/60">AUTH CALLBACK</div>
 
@@ -119,7 +117,7 @@ export default function AuthCallbackPage() {
               {detail}
             </div>
             <div className="mt-6 text-sm text-white/60">
-              This usually means your Supabase <span className="text-white/85">Site URL</span> or{" "}
+              This usually means Supabase <span className="text-white/85">Site URL</span> or{" "}
               <span className="text-white/85">Allowed Redirect URLs</span> do not match the deployed domain.
             </div>
           </>
@@ -152,5 +150,24 @@ export default function AuthCallbackPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#05070d] text-white">
+          <div className="mx-auto max-w-3xl px-6 py-20">
+            <div className="text-xs tracking-[0.28em] text-[#d6b25e]">OASIS OS</div>
+            <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
+              Initializing callback…
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <CallbackInner />
+    </Suspense>
   );
 }
