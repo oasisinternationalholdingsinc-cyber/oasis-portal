@@ -221,7 +221,8 @@ export default function SetPasswordPage() {
 
       if (rpcErr) return setStatus(extractRpcErrorMessage(rpcErr));
 
-      window.location.href = "/";
+      // ✅ IMPORTANT: route to INTERNAL client launchpad (NOT public)
+      window.location.href = "/client";
     } catch (e: any) {
       setStatus(e?.message || "Failed to set password.");
     } finally {
@@ -247,16 +248,13 @@ export default function SetPasswordPage() {
       <main className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-10">
         <div className="w-full max-w-[640px]">
           <div className="mb-6 text-center">
-            <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
-              Oasis Portal
-            </div>
+            <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">Oasis Portal</div>
             <h1 className="mt-2 text-2xl font-semibold">Create your password</h1>
 
             {/* Context badges */}
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
               <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,214,128,.22)] bg-[rgba(255,214,128,.07)] px-3 py-1 text-[11px] tracking-[.18em] text-[rgba(255,214,128,.92)]">
-                APPLICATION
-                <span className="text-white/90">{appIdOk ? shortId(appId!) : "—"}</span>
+                APPLICATION <span className="text-white/90">{appIdOk ? shortId(appId!) : "—"}</span>
               </span>
 
               <span
@@ -322,10 +320,7 @@ export default function SetPasswordPage() {
             )}
           </div>
 
-          <div
-            className="rounded-2xl border border-white/10 bg-black/25 p-6"
-            style={ambientStyle}
-          >
+          <div className="rounded-2xl border border-white/10 bg-black/25 p-6" style={ambientStyle}>
             <label className="mb-2 block text-[11px] uppercase tracking-[.22em] text-zinc-500">
               New password
             </label>
