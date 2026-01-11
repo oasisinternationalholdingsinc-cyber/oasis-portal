@@ -1,52 +1,54 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+/**
+ * OASIS PORTAL AUTH GATE — LOCKED
+ * PUBLIC: /
+ * PRIVATE: /client
+ */
+export function middleware(req: NextRequest) {
+  const { pathname, search } = req.nextUrl;
 
-  // 🔐 HARD EXIT: public + auth surfaces are NEVER inspected
+  // Ignore Next internals & assets
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
+    pathname.startsWith("/robots") ||
+    pathname.startsWith("/sitemap") ||
+    pathname.startsWith("/assets")
+  ) {
+    return NextResponse.next();
+  }
+
+  // ✅ ABSOLUTE PUBLIC ROUTES
   if (
     pathname === "/" ||
-    pathname.startsWith("/login") ||
+    pathname.startsWith("/apply") ||
+    pathname.startsWith("/public") ||
+    pathname === "/login" ||
     pathname.startsWith("/auth")
   ) {
     return NextResponse.next();
   }
 
-  // 🔐 ONLY protect /client
-  if (!pathname.startsWith("/client")) {
-    return NextResponse.next();
-  }
+  // 🔒 ONLY protect /client
+  const isProtected = pathname === "/client" || pathname.startsWith("/client/");
+  if (!isProtected) return NextResponse.next();
 
-  const res = NextResponse.next();
+  // Cookie-truth auth check (Supabase sets sb-* cookies)
+  const hasSessionCookie = req.cookies
+    .getAll()
+    .some((c) => c.name.startsWith("sb-"));
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => req.cookies.getAll(),
-        setAll: (cookies) => {
-          cookies.forEach(({ name, value, options }) => {
-            res.cookies.set(name, value, options);
-          });
-        },
-      },
-    }
-  );
+  if (hasSessionCookie) return NextResponse.next();
 
-  const { data } = await supabase.auth.getUser();
-
-  if (!data.user) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", req.nextUrl.pathname + req.nextUrl.search);
-    return NextResponse.redirect(url);
-  }
-
-  return res;
+  // Redirect unauthenticated users
+  const login = req.nextUrl.clone();
+  login.pathname = "/login";
+  login.searchParams.set("next", pathname + (search || ""));
+  return NextResponse.redirect(login);
 }
 
 export const config = {
-  matcher: ["/client/:path*"],
+  matcher: ["/((?!api).*)"],
 };
