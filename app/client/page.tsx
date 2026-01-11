@@ -3,7 +3,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 type Tile = {
@@ -241,10 +240,10 @@ function HeaderSessionPill({
 }
 
 export default function ClientLaunchpadPage() {
-  const router = useRouter();
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
+  // IMPORTANT: resolve once per page load
   const sb = useMemo(() => supabaseBrowser(), []);
 
   useEffect(() => {
@@ -252,13 +251,8 @@ export default function ClientLaunchpadPage() {
 
     async function boot() {
       try {
-        const { data: sessionData } = await sb.auth.getSession();
-        if (!sessionData.session?.access_token) {
-          if (mounted) setAuthChecked(true);
-          router.replace("/login");
-          return;
-        }
-
+        // NOTE: do NOT redirect from here (middleware is the gate).
+        // We only hydrate UI identity if available.
         const { data } = await sb.auth.getUser();
         if (!mounted) return;
 
@@ -268,7 +262,6 @@ export default function ClientLaunchpadPage() {
         if (!mounted) return;
         setAuthEmail(null);
         setAuthChecked(true);
-        router.replace("/login");
       }
     }
 
@@ -279,19 +272,18 @@ export default function ClientLaunchpadPage() {
     } = sb.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       setAuthEmail(session?.user?.email ?? null);
-
-      if (!session?.access_token) router.replace("/login");
     });
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [sb, router]);
+  }, [sb]);
 
   async function handleSignOut() {
     await sb.auth.signOut();
-    router.replace("/login");
+    // no hard redirect required; middleware will gate on next navigation
+    window.location.assign("/login?next=/client");
   }
 
   if (!authChecked) {
@@ -301,7 +293,9 @@ export default function ClientLaunchpadPage() {
           <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
             Client Console
           </div>
-          <h1 className="mt-3 text-3xl font-semibold text-zinc-100">Authorizing…</h1>
+          <h1 className="mt-3 text-3xl font-semibold text-zinc-100">
+            Authorizing…
+          </h1>
           <p className="mt-4 text-sm leading-6 text-zinc-400">
             Establishing secure session and loading your workspace.
           </p>
@@ -309,14 +303,18 @@ export default function ClientLaunchpadPage() {
             <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
               Session
             </div>
-            <div className="mt-2 text-sm text-zinc-400">Verifying credentials</div>
+            <div className="mt-2 text-sm text-zinc-400">
+              Verifying credentials
+            </div>
           </div>
         </section>
       </main>
     );
   }
 
-  const accessValue = authEmail ? "Authenticated" : "Unauthenticated";
+  // If middleware allowed us here but UI cannot read identity yet, we remain calm.
+  // If middleware *didn't* allow, the request would be redirected before render.
+  const accessValue = authEmail ? "Authenticated" : "Session Required";
   const accessTone: "good" | "warn" = authEmail ? "good" : "warn";
 
   const provisionValue = authEmail ? "Active" : "Inactive";
@@ -381,12 +379,38 @@ export default function ClientLaunchpadPage() {
           <div className="mt-6">
             <HeaderSessionPill email={authEmail} onSignOut={handleSignOut} />
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-6 rounded-2xl border border-amber-300/20 bg-amber-950/10 p-5">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-amber-200">
+              Access Required
+            </div>
+            <div className="mt-2 text-sm text-zinc-300">
+              Your session is not available on this surface. Continue to the
+              authentication terminal.
+            </div>
+            <div className="mt-4">
+              <Link
+                href="/login?next=/client"
+                className="inline-flex items-center justify-center rounded-xl bg-amber-300 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-200"
+              >
+                Go to Login
+              </Link>
+            </div>
+          </div>
+        )}
 
         <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <InstrumentChip label="Access" value={accessValue} tone={accessTone} />
-          <InstrumentChip label="Provisioning" value={provisionValue} tone={provisionTone} />
-          <InstrumentChip label="Evidence Inbox" value={evidenceValue} tone={evidenceTone} />
+          <InstrumentChip
+            label="Provisioning"
+            value={provisionValue}
+            tone={provisionTone}
+          />
+          <InstrumentChip
+            label="Evidence Inbox"
+            value={evidenceValue}
+            tone={evidenceTone}
+          />
         </div>
       </section>
 
