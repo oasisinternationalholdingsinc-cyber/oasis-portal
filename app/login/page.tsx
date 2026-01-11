@@ -7,7 +7,49 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 
-type Step = "READY" | "AUTHING" | "ERROR";
+type Step = "CHECKING" | "READY" | "AUTHING" | "ERROR";
+
+function AuthorityShell({ label }: { label: string }) {
+  return (
+    <div className="min-h-screen bg-[#05070d] text-white">
+      {/* OS haze */}
+      <div className="pointer-events-none fixed inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(900px_520px_at_50%_-10%,rgba(214,178,94,0.10),transparent_60%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(780px_520px_at_50%_120%,rgba(35,65,130,0.16),transparent_55%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(560px_420px_at_15%_40%,rgba(255,255,255,0.05),transparent_60%)]" />
+      </div>
+
+      <div className="relative mx-auto max-w-3xl px-6 py-20">
+        <div className="mb-10">
+          <div className="text-xs tracking-[0.28em] text-[#d6b25e]">OASIS OS</div>
+          <div className="mt-1 text-[11px] tracking-[0.18em] text-white/55">
+            PORTAL ACCESS • AUTHENTICATION
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-6 shadow-[0_28px_110px_rgba(0,0,0,0.65)] backdrop-blur">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <div className="text-lg text-white/90">Authority check</div>
+              <div className="mt-1 text-sm text-white/70">{label}</div>
+            </div>
+            <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs tracking-[0.24em] text-white/70">
+              AUTHORITY
+            </div>
+          </div>
+
+          <div className="mt-6 h-2 w-full overflow-hidden rounded-full border border-white/10 bg-black/30">
+            <div className="h-full w-[45%] animate-pulse bg-[#d6b25e]/25" />
+          </div>
+
+          <div className="mt-8 text-xs tracking-[0.18em] text-white/40">
+            Oasis International Holdings • Institutional Operating System
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function LoginInner() {
   const router = useRouter();
@@ -29,30 +71,43 @@ function LoginInner() {
     );
   }, []);
 
-  const [step, setStep] = useState<Step>("READY");
+  const [step, setStep] = useState<Step>("CHECKING");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [err, setErr] = useState<string | null>(null);
 
-  // If already authenticated, go straight to destination
+  // ✅ Prevent flicker: hold UI in CHECKING until we know if a session exists.
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
+    async function boot() {
       try {
+        // small delay smooths “edge says public / client says authed” transitions
+        await new Promise((r) => setTimeout(r, 220));
         const { data } = await supabase.auth.getSession();
         if (cancelled) return;
+
         if (data.session?.user) {
           router.replace(nextPath);
+          return;
         }
+
+        setStep("READY");
       } catch {
-        // silent — login screen remains available
+        if (!cancelled) setStep("READY");
       }
-    })();
+    }
+
+    boot();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) router.replace(nextPath);
+    });
 
     return () => {
       cancelled = true;
+      sub?.subscription?.unsubscribe?.();
     };
   }, [supabase, router, nextPath]);
 
@@ -95,9 +150,20 @@ function LoginInner() {
 
   const disabled = step === "AUTHING";
 
+  if (step === "CHECKING") {
+    return <AuthorityShell label="Verifying session state…" />;
+  }
+
   return (
     <div className="min-h-screen bg-[#05070d] text-white">
-      <div className="mx-auto max-w-4xl px-6 py-20">
+      {/* OS haze */}
+      <div className="pointer-events-none fixed inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(900px_520px_at_50%_-10%,rgba(214,178,94,0.10),transparent_60%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(780px_520px_at_50%_120%,rgba(35,65,130,0.16),transparent_55%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(560px_420px_at_15%_40%,rgba(255,255,255,0.05),transparent_60%)]" />
+      </div>
+
+      <div className="relative mx-auto max-w-3xl px-6 py-20">
         <div className="mb-10">
           <div className="text-xs tracking-[0.28em] text-[#d6b25e]">OASIS OS</div>
           <div className="mt-1 text-[11px] tracking-[0.18em] text-white/55">
@@ -105,10 +171,18 @@ function LoginInner() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-8 shadow-[0_28px_110px_rgba(0,0,0,0.65)]">
-          <div className="text-2xl font-semibold text-white/90">Sign in</div>
-          <div className="mt-2 text-sm text-white/70">
-            Authorized access to the internal client console.
+        {/* OS-grade surface (no giant black square) */}
+        <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-8 shadow-[0_28px_110px_rgba(0,0,0,0.65)] backdrop-blur">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <div className="text-2xl font-semibold text-white/90">Sign in</div>
+              <div className="mt-2 text-sm text-white/70">
+                Authorized access to the internal client console.
+              </div>
+            </div>
+            <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs tracking-[0.24em] text-white/70">
+              AUTHORITY
+            </div>
           </div>
 
           <form onSubmit={onSubmit} className="mt-8 grid gap-5">
@@ -172,16 +246,7 @@ function LoginInner() {
 export default function LoginPage() {
   return (
     <Suspense
-      fallback={
-        <div className="min-h-screen bg-[#05070d] text-white">
-          <div className="mx-auto max-w-4xl px-6 py-20">
-            <div className="text-xs tracking-[0.28em] text-[#d6b25e]">OASIS OS</div>
-            <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
-              Loading authentication surface…
-            </div>
-          </div>
-        </div>
-      }
+      fallback={<AuthorityShell label="Loading authentication surface…" />}
     >
       <LoginInner />
     </Suspense>
