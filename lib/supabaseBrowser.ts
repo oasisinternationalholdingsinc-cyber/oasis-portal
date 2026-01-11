@@ -1,22 +1,23 @@
 // lib/supabaseBrowser.ts
-import { createClient } from "@supabase/supabase-js";
+"use client";
+
+import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 let _client: SupabaseClient | null = null;
 
 /**
- * Browser Supabase client (singleton).
- * Use as: const supabase = supabaseBrowser();
+ * Oasis Portal — Browser Supabase Client (COOKIE-BASED)
+ * Must match middleware session transport to prevent:
+ * - "logged in but /client says inactive"
+ * - redirect loops / flicker
  */
-export function supabaseBrowser(): SupabaseClient {
+export function supabaseBrowser() {
   if (_client) return _client;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  _client = createClient(url, anon, {
-    auth: { persistSession: true, autoRefreshToken: true },
-  });
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  _client = createBrowserClient(url, key);
 
   return _client;
 }
