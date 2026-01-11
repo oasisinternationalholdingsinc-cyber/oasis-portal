@@ -122,8 +122,14 @@ function SetPasswordInner() {
   }
 
   return (
-    <div className="min-h-screen bg-[#05070d] text-white">
-      <div className="mx-auto max-w-3xl px-6 py-20">
+    <div className="relative">
+      {/* Ambient OS wash (matches /login vibe) */}
+      <div aria-hidden className="pointer-events-none fixed inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(1200px_700px_at_50%_12%,rgba(214,178,94,0.10),transparent_60%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(900px_600px_at_50%_88%,rgba(80,140,255,0.07),transparent_55%)]" />
+      </div>
+
+      <div className="relative mx-auto max-w-6xl px-6 py-10">
         <div className="mb-10">
           <div className="text-xs tracking-[0.28em] text-[#d6b25e]">OASIS OS</div>
           <div className="mt-1 text-[11px] tracking-[0.18em] text-white/55">
@@ -132,93 +138,187 @@ function SetPasswordInner() {
         </div>
 
         {step === "NO_SESSION" ? (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-            <div className="text-lg text-white/90">Session not established</div>
-            <div className="mt-2 text-sm text-white/70">
-              Open the invite link directly from the email (fresh link). If expired, request a new invite.
-            </div>
-            <div className="mt-5 text-xs tracking-[0.18em] text-white/40">
-              {email ? `Detected: ${email}` : "No session user detected."}
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_28px_120px_rgba(0,0,0,0.55)] backdrop-blur">
             <div className="flex items-start justify-between gap-6">
               <div>
-                <div className="text-lg text-white/90">Set a secure password</div>
-                <div className="mt-1 text-sm text-white/70">
-                  This binds your invite session to an operator credential. Minimum 10 characters.
+                <div className="text-2xl font-semibold text-white/90">
+                  Session not established
                 </div>
-                {email ? (
-                  <div className="mt-3 text-xs tracking-[0.18em] text-white/45">
-                    SESSION: <span className="text-white/70">{email}</span>
-                  </div>
-                ) : null}
-                <div className="mt-1 text-xs tracking-[0.18em] text-white/45">
-                  APPLICATION:{" "}
-                  <span className="text-white/70">{appId ? appId : "auto-resolve (email)"}</span>
+                <div className="mt-2 text-sm leading-6 text-white/70">
+                  Open the invite link directly from the email (fresh link). If it has
+                  expired, request a new invite.
+                </div>
+
+                <div className="mt-5 text-xs tracking-[0.18em] text-white/40">
+                  {email ? `Detected: ${email}` : "No session user detected."}
                 </div>
               </div>
 
-              <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs tracking-[0.24em] text-white/70">
+              <div className="mt-1 rounded-full border border-[#d6b25e]/25 bg-[#d6b25e]/10 px-3 py-1 text-[10px] tracking-[0.22em] text-[#f5dea3]">
                 AUTHORITY
               </div>
             </div>
 
-            <div className="mt-8 grid gap-4">
-              <label className="grid gap-2">
-                <span className="text-xs tracking-[0.18em] text-white/55">NEW PASSWORD</span>
-                <input
-                  type="password"
-                  value={pw1}
-                  onChange={(e) => setPw1(e.target.value)}
-                  className="h-11 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-white/90 outline-none focus:border-[#d6b25e]/40"
-                  placeholder="••••••••••"
-                  autoComplete="new-password"
-                />
-              </label>
-
-              <label className="grid gap-2">
-                <span className="text-xs tracking-[0.18em] text-white/55">CONFIRM PASSWORD</span>
-                <input
-                  type="password"
-                  value={pw2}
-                  onChange={(e) => setPw2(e.target.value)}
-                  className="h-11 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-white/90 outline-none focus:border-[#d6b25e]/40"
-                  placeholder="••••••••••"
-                  autoComplete="new-password"
-                />
-              </label>
-
-              {err ? (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">
-                  {err}
+            <div className="mt-8 grid gap-3">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">
+                  Gate
                 </div>
-              ) : null}
-
-              {okMsg ? (
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100/90">
-                  {okMsg}
+                <div className="mt-2 text-sm text-white/75">
+                  No authenticated invite session is present. This terminal requires a
+                  valid session token before binding credentials.
                 </div>
-              ) : null}
-
-              <button
-                onClick={onSubmit}
-                disabled={!canSubmit || step === "SAVING" || step === "DONE"}
-                className={[
-                  "mt-2 h-11 rounded-xl px-5 text-sm tracking-[0.16em] transition",
-                  "border border-[#d6b25e]/25 bg-[#d6b25e]/10 text-[#f5dea3]",
-                  "hover:border-[#d6b25e]/40 hover:bg-[#d6b25e]/15",
-                  "disabled:cursor-not-allowed disabled:opacity-50",
-                ].join(" ")}
-              >
-                {step === "SAVING" ? "SEALING…" : step === "DONE" ? "PROVISIONED" : "SET PASSWORD"}
-              </button>
-
-              <div className="mt-8 text-xs tracking-[0.18em] text-white/40">
-                Oasis International Holdings • Institutional Operating System
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">
+                  Action
+                </div>
+                <div className="mt-2 text-sm text-white/75">
+                  Return to the invite email and open the link again in the same browser.
+                </div>
               </div>
             </div>
+
+            <div className="mt-10 text-xs tracking-[0.18em] text-white/35">
+              Oasis International Holdings • Institutional Operating System
+            </div>
+          </div>
+        ) : (
+          <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-14">
+            {/* LEFT: Authority framing */}
+            <section className="max-w-xl">
+              <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-[#d6b25e]">
+                Oasis OS
+              </div>
+              <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-white/50">
+                Credential Binding • Secure Enrollment
+              </div>
+
+              <h1 className="mt-6 text-3xl font-semibold text-white/90">
+                Bind your invite session to an operator credential.
+              </h1>
+              <p className="mt-4 text-sm leading-6 text-white/65">
+                This step converts a one-time invite session into a durable credential.
+                Minimum 10 characters. Provisioning is completed immediately after a
+                successful password set.
+              </p>
+
+              <div className="mt-8 grid gap-3">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">
+                    Session
+                  </div>
+                  <div className="mt-2 text-sm text-white/75">
+                    {email ? (
+                      <>
+                        <span className="text-white/55">Detected:</span>{" "}
+                        <span className="font-mono text-xs text-white/85">{email}</span>
+                      </>
+                    ) : (
+                      <span className="text-white/60">Detecting…</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">
+                    Application
+                  </div>
+                  <div className="mt-2 text-sm text-white/75">
+                    <span className="font-mono text-xs text-white/85">
+                      {appId ? appId : "auto-resolve (email)"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* RIGHT: Set-password card */}
+            <section className="lg:pt-2">
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-7 shadow-[0_28px_120px_rgba(0,0,0,0.55)] backdrop-blur">
+                <div className="flex items-start justify-between gap-6">
+                  <div>
+                    <div className="text-2xl font-semibold text-white/90">
+                      Set password
+                    </div>
+                    <div className="mt-1 text-sm text-white/65">
+                      Minimum 10 characters. Must match confirmation.
+                    </div>
+                  </div>
+
+                  <div className="rounded-full border border-[#d6b25e]/25 bg-[#d6b25e]/10 px-3 py-1 text-[10px] tracking-[0.22em] text-[#f5dea3]">
+                    AUTHORITY
+                  </div>
+                </div>
+
+                <div className="mt-7 grid gap-5">
+                  <label className="grid gap-2">
+                    <span className="text-xs tracking-[0.18em] text-white/55">
+                      NEW PASSWORD
+                    </span>
+                    <input
+                      type="password"
+                      value={pw1}
+                      onChange={(e) => setPw1(e.target.value)}
+                      className="h-12 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-white/90 outline-none focus:border-[#d6b25e]/40"
+                      placeholder="••••••••••"
+                      autoComplete="new-password"
+                    />
+                  </label>
+
+                  <label className="grid gap-2">
+                    <span className="text-xs tracking-[0.18em] text-white/55">
+                      CONFIRM PASSWORD
+                    </span>
+                    <input
+                      type="password"
+                      value={pw2}
+                      onChange={(e) => setPw2(e.target.value)}
+                      className="h-12 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-white/90 outline-none focus:border-[#d6b25e]/40"
+                      placeholder="••••••••••"
+                      autoComplete="new-password"
+                    />
+                  </label>
+
+                  {err ? (
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">
+                      {err}
+                    </div>
+                  ) : null}
+
+                  {okMsg ? (
+                    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100/90">
+                      {okMsg}
+                    </div>
+                  ) : null}
+
+                  <button
+                    onClick={onSubmit}
+                    disabled={!canSubmit || step === "SAVING" || step === "DONE"}
+                    className={[
+                      "mt-1 h-12 rounded-xl px-5 text-sm font-semibold tracking-[0.14em] transition",
+                      "border border-[#d6b25e]/25 bg-[#d6b25e]/10 text-[#f5dea3]",
+                      "hover:border-[#d6b25e]/40 hover:bg-[#d6b25e]/15",
+                      "disabled:cursor-not-allowed disabled:opacity-50",
+                    ].join(" ")}
+                  >
+                    {step === "SAVING"
+                      ? "SEALING…"
+                      : step === "DONE"
+                        ? "PROVISIONED"
+                        : "SET PASSWORD"}
+                  </button>
+
+                  <div className="pt-2 text-xs tracking-[0.18em] text-white/35">
+                    Destination: <span className="text-white/55">/client</span>
+                  </div>
+
+                  <div className="pt-1 text-xs tracking-[0.18em] text-white/40">
+                    Oasis International Holdings • Institutional Operating System
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         )}
       </div>
@@ -231,7 +331,7 @@ export default function SetPasswordPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-[#05070d] text-white">
-          <div className="mx-auto max-w-3xl px-6 py-20">
+          <div className="mx-auto max-w-6xl px-6 py-14">
             <div className="text-xs tracking-[0.28em] text-[#d6b25e]">OASIS OS</div>
             <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
               Loading secure session…
