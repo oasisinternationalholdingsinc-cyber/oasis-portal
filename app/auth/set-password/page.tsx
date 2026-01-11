@@ -86,6 +86,21 @@ function readAppIdFromUrlWithSource(): { appId: string | null; source: AppIdSour
   return { appId: null, source: "none" };
 }
 
+function readHashTokens():
+  | { access_token: string; refresh_token: string }
+  | null {
+  const hash = window.location.hash?.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash || "";
+  const hs = new URLSearchParams(hash);
+
+  const access_token = hs.get("access_token");
+  const refresh_token = hs.get("refresh_token");
+
+  if (access_token && refresh_token) return { access_token, refresh_token };
+  return null;
+}
+
 async function resolveLatestAppIdByEmail(email: string): Promise<string | null> {
   const e = (email || "").trim().toLowerCase();
   if (!e) return null;
@@ -137,7 +152,6 @@ function sourceLabel(s: AppIdSource) {
 }
 
 function sourceChipClass(s: AppIdSource) {
-  // Keep these subtle (enterprise). No neon.
   switch (s) {
     case "query":
       return "border-[rgba(255,214,128,.22)] bg-[rgba(255,214,128,.08)] text-[rgba(255,214,128,.92)]";
@@ -150,6 +164,57 @@ function sourceChipClass(s: AppIdSource) {
     default:
       return "border-white/10 bg-black/25 text-zinc-300";
   }
+}
+
+async function establishSessionFromLink(): Promise<{ ok: boolean; reason?: string }> {
+  // 0) if a session already exists, keep it (but only if it exists)
+  const existing = await supabase.auth.getSession();
+  if (existing.data?.session) return { ok: true };
+
+  const url = new URL(window.location.href);
+
+  // 1) NEW FORMAT: ?code=...
+  const code = url.searchParams.get("code");
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) return { ok: false, reason: error.message };
+
+    // remove code from URL (keep app_id)
+    url.searchParams.delete("code");
+    window.history.replaceState({}, "", url.toString());
+    return { ok: true };
+  }
+
+  // 2) COMMON FORMAT: ?token_hash=...&type=recovery|invite|magiclink
+  const token_hash = url.searchParams.get("token_hash");
+  const type = (url.searchParams.get("type") || "") as any;
+  if (token_hash && type) {
+    const { error } = await supabase.auth.verifyOtp({ type, token_hash });
+    if (error) return { ok: false, reason: error.message };
+
+    // clean url
+    url.searchParams.delete("token_hash");
+    url.searchParams.delete("type");
+    window.history.replaceState({}, "", url.toString());
+    return { ok: true };
+  }
+
+  // 3) OLDER FORMAT: #access_token=...&refresh_token=...
+  const hashTokens = readHashTokens();
+  if (hashTokens) {
+    const { error } = await supabase.auth.setSession(hashTokens);
+    if (error) return { ok: false, reason: error.message };
+
+    // remove hash tokens from URL
+    window.history.replaceState({}, "", url.toString());
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    reason:
+      "No auth token/code found in the URL. Open the invite/reset email link directly (don’t copy/paste a stripped URL).",
+  };
 }
 
 export default function SetPasswordPage() {
@@ -166,25 +231,28 @@ export default function SetPasswordPage() {
   const [copied, setCopied] = useState<null | "short" | "full">(null);
 
   useEffect(() => {
-    // ✅ CRITICAL: prevent an existing operator session from contaminating invite flow
-    // If a different user is currently signed in, updateUser/getUser/rpc can bind to the wrong identity.
-    supabase.auth.signOut();
+    (async () => {
+      setUrlErr(parseErrorFromUrl());
 
-    setUrlErr(parseErrorFromUrl());
+      const fromUrl = readAppIdFromUrlWithSource();
+      if (fromUrl.appId) {
+        setAppId(fromUrl.appId);
+        setAppIdSource(fromUrl.source);
+        sessionStorage.setItem("oasis_app_id", fromUrl.appId);
+      } else {
+        const cached = sessionStorage.getItem("oasis_app_id");
+        if (cached) {
+          setAppId(cached);
+          setAppIdSource("cached");
+        }
+      }
 
-    const fromUrl = readAppIdFromUrlWithSource();
-    if (fromUrl.appId) {
-      setAppId(fromUrl.appId);
-      setAppIdSource(fromUrl.source);
-      sessionStorage.setItem("oasis_app_id", fromUrl.appId);
-      return;
-    }
-
-    const cached = sessionStorage.getItem("oasis_app_id");
-    if (cached) {
-      setAppId(cached);
-      setAppIdSource("cached");
-    }
+      // ✅ Establish session from whatever Supabase put in the email link
+      const res = await establishSessionFromLink();
+      if (!res.ok) {
+        setStatus(res.reason || "Session not established.");
+      }
+    })();
   }, []);
 
   const appIdOk = useMemo(() => !!(appId && isUuidLike(appId)), [appId]);
@@ -198,7 +266,16 @@ export default function SetPasswordPage() {
 
     setBusy(true);
     try {
-      await supabase.auth.updateUser({ password: pw });
+      // ensure session exists
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess?.session) {
+        return setStatus(
+          "Session not established. Re-open the invite/reset email link (must include code/token)."
+        );
+      }
+
+      const { error: updErr } = await supabase.auth.updateUser({ password: pw });
+      if (updErr) return setStatus(updErr.message);
 
       const { data } = await supabase.auth.getUser();
       const userId = data?.user?.id;
@@ -211,7 +288,6 @@ export default function SetPasswordPage() {
 
       if (!effectiveAppId) return setStatus("Provisioning context unresolved.");
 
-      // UI-only: reflect resolved context in the badge (no behavior change)
       if (!appId || !isUuidLike(appId)) {
         setAppId(effectiveAppId);
         setAppIdSource("resolved");
@@ -225,7 +301,7 @@ export default function SetPasswordPage() {
 
       if (rpcErr) return setStatus(extractRpcErrorMessage(rpcErr));
 
-      // ✅ IMPORTANT: route to INTERNAL client launchpad (NOT public)
+      // ✅ INTERNAL client launchpad
       window.location.href = "/client";
     } catch (e: any) {
       setStatus(e?.message || "Failed to set password.");
@@ -235,12 +311,10 @@ export default function SetPasswordPage() {
   };
 
   const pageBg = {
-    // Keep this "quiet" so the host OS chrome doesn't feel doubled.
     background: `radial-gradient(circle at top, rgba(2,12,36,.85) 0%, rgba(2,6,23,.92) 45%, rgba(0,0,0,.98) 100%)`,
   } as React.CSSProperties;
 
   const ambientStyle = {
-    // Subtle surface breathing as you scroll (keeps it alive without fighting host chrome)
     boxShadow: `0 0 0 1px rgba(255,255,255,${0.04 + railT * 0.03}), 0 25px 90px rgba(0,0,0,${
       0.55 + railT * 0.12
     })`,
@@ -248,18 +322,15 @@ export default function SetPasswordPage() {
 
   return (
     <div className="min-h-screen text-zinc-100" style={pageBg}>
-      {/* CONTENT ONLY: no local header/footer (host OS already provides chrome) */}
       <main className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-10">
         <div className="w-full max-w-[640px]">
           <div className="mb-6 text-center">
             <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">Oasis Portal</div>
             <h1 className="mt-2 text-2xl font-semibold">Create your password</h1>
 
-            {/* Context badges */}
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
               <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,214,128,.22)] bg-[rgba(255,214,128,.07)] px-3 py-1 text-[11px] tracking-[.18em] text-[rgba(255,214,128,.92)]">
-                APPLICATION{" "}
-                <span className="text-white/90">{appIdOk ? shortId(appId!) : "—"}</span>
+                APPLICATION <span className="text-white/90">{appIdOk ? shortId(appId!) : "—"}</span>
               </span>
 
               <span
