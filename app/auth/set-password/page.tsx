@@ -5,108 +5,17 @@ import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 const supabase = supabaseBrowser();
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function useRailEngagement() {
-  const [t, setT] = useState(0);
-  useEffect(() => {
-    const onScroll = () => {
-      const doc = document.documentElement;
-      const scrollTop = window.scrollY || doc.scrollTop || 0;
-      const viewportH = window.innerHeight || 0;
-      const docH = Math.max(doc.scrollHeight, doc.offsetHeight);
-      const dist = docH - (scrollTop + viewportH);
-
-      const start = 520;
-      const end = 140;
-      const raw = (start - dist) / (start - end);
-      setT(clamp(raw, 0, 1));
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-  return t;
-}
-
-function parseErrorFromUrl() {
-  const url = new URL(window.location.href);
-  const q = {
-    error: url.searchParams.get("error"),
-    error_code: url.searchParams.get("error_code"),
-    error_description: url.searchParams.get("error_description"),
-    type: url.searchParams.get("type"),
-  };
-
-  const hash = window.location.hash?.startsWith("#")
-    ? window.location.hash.slice(1)
-    : window.location.hash || "";
-  const hs = new URLSearchParams(hash);
-
-  const h = {
-    error: hs.get("error"),
-    error_code: hs.get("error_code"),
-    error_description: hs.get("error_description"),
-    type: hs.get("type"),
-  };
-
-  return {
-    error: q.error || h.error,
-    error_code: q.error_code || h.error_code,
-    error_description: q.error_description || h.error_description,
-    type: q.type || h.type,
-  };
-}
-
-function isUuidLike(x: string) {
-  const s = (x || "").trim();
+function isUuidLike(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    s
+    v
   );
 }
 
-type AppIdSource = "query" | "hash" | "cached" | "resolved" | "none";
-
-function readAppIdFromUrlWithSource(): { appId: string | null; source: AppIdSource } {
-  const url = new URL(window.location.href);
-
-  const q = url.searchParams.get("app_id") || url.searchParams.get("application_id");
-  if (q && q.trim()) return { appId: q.trim(), source: "query" };
-
-  const hash = window.location.hash?.startsWith("#")
-    ? window.location.hash.slice(1)
-    : window.location.hash || "";
-  const hs = new URLSearchParams(hash);
-
-  const h = hs.get("app_id") || hs.get("application_id");
-  if (h && h.trim()) return { appId: h.trim(), source: "hash" };
-
-  return { appId: null, source: "none" };
-}
-
-function readHashTokens(): { access_token: string; refresh_token: string } | null {
-  const hash = window.location.hash?.startsWith("#")
-    ? window.location.hash.slice(1)
-    : window.location.hash || "";
-  const hs = new URLSearchParams(hash);
-
-  const access_token = hs.get("access_token");
-  const refresh_token = hs.get("refresh_token");
-
-  if (access_token && refresh_token) return { access_token, refresh_token };
-  return null;
-}
-
-async function resolveLatestAppIdByEmail(email: string): Promise<string | null> {
-  const e = (email || "").trim().toLowerCase();
-  if (!e) return null;
-
+async function resolveLatestAppIdByEmail(email: string) {
   const { data } = await supabase
     .from("onboarding_applications")
     .select("id")
-    .ilike("applicant_email", e)
+    .ilike("applicant_email", email)
     .order("submitted_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -114,199 +23,65 @@ async function resolveLatestAppIdByEmail(email: string): Promise<string | null> 
   return data?.id ?? null;
 }
 
-function extractRpcErrorMessage(err: any): string {
-  return err?.message || "RPC_FAILED";
-}
-
-function shortId(id: string, head = 8, tail = 6) {
-  const s = (id || "").trim();
-  if (!s) return "";
-  if (s.length <= head + tail + 1) return s;
-  return `${s.slice(0, head)}…${s.slice(-tail)}`;
-}
-
-async function safeCopy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function sourceLabel(s: AppIdSource) {
-  switch (s) {
-    case "query":
-      return "URL";
-    case "hash":
-      return "HASH";
-    case "cached":
-      return "CACHED";
-    case "resolved":
-      return "RESOLVED";
-    default:
-      return "—";
-  }
-}
-
-function sourceChipClass(s: AppIdSource) {
-  switch (s) {
-    case "query":
-      return "border-[rgba(255,214,128,.22)] bg-[rgba(255,214,128,.08)] text-[rgba(255,214,128,.92)]";
-    case "resolved":
-      return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
-    case "hash":
-      return "border-sky-500/20 bg-sky-500/10 text-sky-200";
-    case "cached":
-      return "border-white/10 bg-white/5 text-zinc-200";
-    default:
-      return "border-white/10 bg-black/25 text-zinc-300";
-  }
-}
-
-/**
- * Establish a Supabase session from whatever the email link contains.
- * Supports:
- *  - ?code=... (PKCE)
- *  - ?token_hash=...&type=invite|recovery|magiclink
- *  - #access_token=...&refresh_token=...
- */
-async function establishSessionFromLink(): Promise<{ ok: boolean; reason?: string }> {
-  // If a session already exists, keep it.
-  const existing = await supabase.auth.getSession();
-  if (existing.data?.session) return { ok: true };
-
-  const url = new URL(window.location.href);
-
-  // A) PKCE: ?code=...
-  const code = url.searchParams.get("code");
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) return { ok: false, reason: error.message };
-
-    // Clean URL: remove code only, keep app_id
-    url.searchParams.delete("code");
-    window.history.replaceState({}, "", url.toString());
-    return { ok: true };
-  }
-
-  // B) OTP verify: ?token_hash=...&type=...
-  const token_hash = url.searchParams.get("token_hash");
-  const type = (url.searchParams.get("type") || "").trim() as any;
-  if (token_hash && type) {
-    const { error } = await supabase.auth.verifyOtp({ type, token_hash });
-    if (error) return { ok: false, reason: error.message };
-
-    // Clean URL: remove otp params, keep app_id
-    url.searchParams.delete("token_hash");
-    url.searchParams.delete("type");
-    window.history.replaceState({}, "", url.toString());
-    return { ok: true };
-  }
-
-  // C) Implicit tokens in hash
-  const hashTokens = readHashTokens();
-  if (hashTokens) {
-    const { error } = await supabase.auth.setSession(hashTokens);
-    if (error) return { ok: false, reason: error.message };
-
-    // Remove hash entirely, keep query
-    window.history.replaceState({}, "", url.origin + url.pathname + url.search);
-    return { ok: true };
-  }
-
-  return {
-    ok: false,
-    reason:
-      "No auth token/code found in the URL. Open the invite/reset email link directly (don’t copy/paste a stripped URL).",
-  };
-}
-
 export default function SetPasswordPage() {
-  const railT = useRailEngagement();
-
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [urlErr, setUrlErr] = useState<any>(null);
   const [appId, setAppId] = useState<string | null>(null);
-  const [appIdSource, setAppIdSource] = useState<AppIdSource>("none");
-  const [copied, setCopied] = useState<null | "short" | "full">(null);
 
   useEffect(() => {
-    (async () => {
-      setUrlErr(parseErrorFromUrl());
+    const url = new URL(window.location.href);
+    const id =
+      url.searchParams.get("app_id") ||
+      sessionStorage.getItem("oasis_app_id");
 
-      const fromUrl = readAppIdFromUrlWithSource();
-      if (fromUrl.appId) {
-        setAppId(fromUrl.appId);
-        setAppIdSource(fromUrl.source);
-        sessionStorage.setItem("oasis_app_id", fromUrl.appId);
-      } else {
-        const cached = sessionStorage.getItem("oasis_app_id");
-        if (cached) {
-          setAppId(cached);
-          setAppIdSource("cached");
-        }
-      }
-
-      // Establish session on page load (from invite/reset link)
-      const res = await establishSessionFromLink();
-      if (!res.ok) setStatus(res.reason || "Session not established.");
-    })();
+    if (id) {
+      setAppId(id);
+      sessionStorage.setItem("oasis_app_id", id);
+    }
   }, []);
 
   const appIdOk = useMemo(() => !!(appId && isUuidLike(appId)), [appId]);
 
   const submit = async () => {
     setStatus(null);
-    setCopied(null);
 
     if (pw.length < 8) return setStatus("Password must be at least 8 characters.");
     if (pw !== pw2) return setStatus("Passwords do not match.");
 
     setBusy(true);
     try {
-      // Ensure session exists (if link was opened correctly)
-      const { data: sess } = await supabase.auth.getSession();
-      if (!sess?.session) {
-        return setStatus(
-          "Session not established. Re-open the invite/reset email link (must include code/token)."
-        );
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session) {
+        return setStatus("Session expired. Re-open the invite email.");
       }
 
-      // Set password
-      const { error: updErr } = await supabase.auth.updateUser({ password: pw });
+      const { error: updErr } = await supabase.auth.updateUser({
+        password: pw,
+      });
       if (updErr) return setStatus(updErr.message);
 
-      // Resolve identity
-      const { data } = await supabase.auth.getUser();
-      const userId = data?.user?.id;
-      const email = data?.user?.email;
-      if (!userId || !email) return setStatus("Session not established.");
+      const { data: userRes } = await supabase.auth.getUser();
+      const userId = userRes?.user?.id;
+      const email = userRes?.user?.email;
 
-      // Resolve app_id
+      if (!userId || !email) return setStatus("Session invalid.");
+
       const effectiveAppId =
-        appId && isUuidLike(appId) ? appId : await resolveLatestAppIdByEmail(email);
+        appIdOk && appId
+          ? appId
+          : await resolveLatestAppIdByEmail(email);
 
-      if (!effectiveAppId) return setStatus("Provisioning context unresolved.");
+      if (!effectiveAppId)
+        return setStatus("Provisioning context unresolved.");
 
-      if (!appId || !isUuidLike(appId)) {
-        setAppId(effectiveAppId);
-        setAppIdSource("resolved");
-        sessionStorage.setItem("oasis_app_id", effectiveAppId);
-      }
-
-      // Provision entity + memberships (RPC wiring unchanged)
-      const { error: rpcErr } = await supabase.rpc("admissions_complete_provisioning", {
+      await supabase.rpc("admissions_complete_provisioning", {
         p_application_id: effectiveAppId,
         p_user_id: userId,
       });
-      if (rpcErr) return setStatus(extractRpcErrorMessage(rpcErr));
 
-      // ✅ Route to INTERNAL client launchpad
       window.location.href = "/client";
     } catch (e: any) {
       setStatus(e?.message || "Failed to set password.");
@@ -315,135 +90,41 @@ export default function SetPasswordPage() {
     }
   };
 
-  const pageBg = {
-    background: `radial-gradient(circle at top, rgba(2,12,36,.85) 0%, rgba(2,6,23,.92) 45%, rgba(0,0,0,.98) 100%)`,
-  } as React.CSSProperties;
-
-  const ambientStyle = {
-    boxShadow: `0 0 0 1px rgba(255,255,255,${0.04 + railT * 0.03}), 0 25px 90px rgba(0,0,0,${
-      0.55 + railT * 0.12
-    })`,
-  } as React.CSSProperties;
-
   return (
-    <div className="min-h-screen text-zinc-100" style={pageBg}>
-      <main className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-10">
-        <div className="w-full max-w-[640px]">
-          <div className="mb-6 text-center">
-            <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
-              Oasis Portal
-            </div>
-            <h1 className="mt-2 text-2xl font-semibold">Create your password</h1>
+    <main className="min-h-screen grid place-items-center px-6">
+      <div className="w-full max-w-md rounded-xl border border-white/10 bg-black/40 p-6">
+        <h1 className="mb-4 text-lg font-semibold text-white">
+          Create your password
+        </h1>
 
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,214,128,.22)] bg-[rgba(255,214,128,.07)] px-3 py-1 text-[11px] tracking-[.18em] text-[rgba(255,214,128,.92)]">
-                APPLICATION <span className="text-white/90">{appIdOk ? shortId(appId!) : "—"}</span>
-              </span>
+        <input
+          type="password"
+          placeholder="New password"
+          value={pw}
+          onChange={(e) => setPw(e.target.value)}
+          className="mb-3 w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white"
+        />
 
-              <span
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] tracking-[.18em] ${sourceChipClass(
-                  appIdSource
-                )}`}
-              >
-                SOURCE <span className="text-white/90">{sourceLabel(appIdSource)}</span>
-              </span>
+        <input
+          type="password"
+          placeholder="Confirm password"
+          value={pw2}
+          onChange={(e) => setPw2(e.target.value)}
+          className="mb-4 w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white"
+        />
 
-              <span
-                className={`inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] tracking-[.18em] ${
-                  appIdOk ? "text-emerald-200" : "text-amber-200/90"
-                }`}
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    appIdOk ? "bg-emerald-400/80" : "bg-amber-300/80"
-                  }`}
-                />
-                {appIdOk ? "CONTEXT VERIFIED" : "CONTEXT MISSING"}
-              </span>
+        <button
+          onClick={submit}
+          disabled={busy}
+          className="w-full rounded-lg bg-amber-300 py-2 font-semibold text-black disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Set password"}
+        </button>
 
-              {appIdOk && (
-                <>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const ok = await safeCopy(shortId(appId!));
-                      setCopied(ok ? "short" : null);
-                      setTimeout(() => setCopied(null), 1200);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] tracking-[.18em] text-zinc-200 hover:bg-black/35"
-                  >
-                    COPY SHORT
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const ok = await safeCopy(appId!);
-                      setCopied(ok ? "full" : null);
-                      setTimeout(() => setCopied(null), 1200);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] tracking-[.18em] text-zinc-200 hover:bg-black/35"
-                  >
-                    COPY FULL
-                  </button>
-                </>
-              )}
-            </div>
-
-            {copied && (
-              <div className="mt-2 text-xs text-zinc-400">
-                Copied {copied === "full" ? "full" : "short"} application ID.
-              </div>
-            )}
-
-            {urlErr?.error && (
-              <div className="mt-3 text-xs text-amber-200/80">
-                {urlErr.error_description || urlErr.error}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-black/25 p-6" style={ambientStyle}>
-            <label className="mb-2 block text-[11px] uppercase tracking-[.22em] text-zinc-500">
-              New password
-            </label>
-            <input
-              type="password"
-              placeholder="Minimum 8 characters"
-              value={pw}
-              onChange={(e) => setPw(e.target.value)}
-              className="mb-4 w-full rounded-xl border border-white/10 bg-black/35 px-4 py-3 text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-[rgba(255,214,128,.45)] focus:ring-2 focus:ring-[rgba(255,214,128,.12)]"
-            />
-
-            <label className="mb-2 block text-[11px] uppercase tracking-[.22em] text-zinc-500">
-              Confirm password
-            </label>
-            <input
-              type="password"
-              placeholder="Re-enter password"
-              value={pw2}
-              onChange={(e) => setPw2(e.target.value)}
-              className="mb-5 w-full rounded-xl border border-white/10 bg-black/35 px-4 py-3 text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-[rgba(255,214,128,.45)] focus:ring-2 focus:ring-[rgba(255,214,128,.12)]"
-            />
-
-            <button
-              onClick={submit}
-              disabled={busy}
-              className="w-full rounded-xl bg-amber-300 px-4 py-3 font-semibold text-zinc-900 shadow-[0_8px_30px_rgba(255,214,128,.12)] transition disabled:opacity-60"
-            >
-              {busy ? "Saving…" : "Set password"}
-            </button>
-
-            {status && <div className="mt-4 text-sm text-zinc-300">{status}</div>}
-
-            {!status && (
-              <div className="mt-4 text-xs text-zinc-500">
-                This terminal provisions access after password creation.
-              </div>
-            )}
-          </div>
-        </div>
-      </main>
-    </div>
+        {status && (
+          <div className="mt-4 text-sm text-white/80">{status}</div>
+        )}
+      </div>
+    </main>
   );
 }
