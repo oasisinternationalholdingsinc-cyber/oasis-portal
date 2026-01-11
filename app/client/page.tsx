@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 type Tile = {
@@ -27,7 +28,6 @@ const LEDGER_URL =
   normalizeUrl(process.env.NEXT_PUBLIC_LEDGER_APP_URL) ||
   "https://ledger.oasisintlholdings.com";
 
-// Optional: if you later want AXIOM exposed to clients (read-only)
 const AXIOM_URL =
   normalizeUrl(process.env.NEXT_PUBLIC_AXIOM_APP_URL) ||
   normalizeUrl(process.env.NEXT_PUBLIC_AXOOM_APP_URL);
@@ -43,10 +43,6 @@ function formatPrincipalEmail(email?: string | null) {
   return `${e.slice(0, 16)}…${e.slice(-12)}`;
 }
 
-/**
- * Console Instrument: compact readout chip.
- * (No wiring changes — presentation only.)
- */
 function InstrumentChip({
   label,
   value,
@@ -144,10 +140,6 @@ function TileCard({
   return <Link href={href}>{content}</Link>;
 }
 
-/**
- * Console Gate Module: dominant, inevitable handoff into the Ledger.
- * (No wiring changes — same href, same external behavior.)
- */
 function GateCard({
   eyebrow,
   title,
@@ -225,7 +217,6 @@ function HeaderSessionPill({
   email: string;
   onSignOut: () => void;
 }) {
-  // Content-only reinforcement (identity + exit). Does not replace OS sticky header.
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
       <div className="flex items-center gap-3">
@@ -249,45 +240,82 @@ function HeaderSessionPill({
   );
 }
 
-// ===== Main (CONTENT ONLY — header/footer live in app/layout.tsx) =====
 export default function ClientLaunchpadPage() {
+  const router = useRouter();
   const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  // IMPORTANT: supabaseBrowser() returns a client. Resolve once per page load.
   const sb = useMemo(() => supabaseBrowser(), []);
 
   useEffect(() => {
     let mounted = true;
 
-    sb.auth
-      .getUser()
-      .then(({ data }) => {
+    async function boot() {
+      try {
+        const { data: sessionData } = await sb.auth.getSession();
+        if (!sessionData.session?.access_token) {
+          if (mounted) setAuthChecked(true);
+          router.replace("/login");
+          return;
+        }
+
+        const { data } = await sb.auth.getUser();
         if (!mounted) return;
+
         setAuthEmail(data.user?.email ?? null);
-      })
-      .catch(() => {
+        setAuthChecked(true);
+      } catch {
         if (!mounted) return;
         setAuthEmail(null);
-      });
+        setAuthChecked(true);
+        router.replace("/login");
+      }
+    }
+
+    boot();
 
     const {
       data: { subscription },
     } = sb.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       setAuthEmail(session?.user?.email ?? null);
+
+      if (!session?.access_token) router.replace("/login");
     });
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [sb]);
+  }, [sb, router]);
 
   async function handleSignOut() {
     await sb.auth.signOut();
+    router.replace("/login");
   }
 
-  // Console readouts (instrumentation > cards)
+  if (!authChecked) {
+    return (
+      <main className="mx-auto max-w-6xl px-6 py-14">
+        <section className="max-w-3xl">
+          <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
+            Client Console
+          </div>
+          <h1 className="mt-3 text-3xl font-semibold text-zinc-100">Authorizing…</h1>
+          <p className="mt-4 text-sm leading-6 text-zinc-400">
+            Establishing secure session and loading your workspace.
+          </p>
+          <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-5">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+              Session
+            </div>
+            <div className="mt-2 text-sm text-zinc-400">Verifying credentials</div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   const accessValue = authEmail ? "Authenticated" : "Unauthenticated";
   const accessTone: "good" | "warn" = authEmail ? "good" : "warn";
 
@@ -305,7 +333,7 @@ export default function ClientLaunchpadPage() {
     href: "/client/upload",
     badge: "Private",
     cta: "Upload",
-    disabled: true, // enable once /client/upload exists
+    disabled: true,
   };
 
   const secondaryTiles: Tile[] = [
@@ -338,7 +366,6 @@ export default function ClientLaunchpadPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-14">
-      {/* HERO */}
       <section className="max-w-3xl">
         <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
           Client Console
@@ -350,32 +377,20 @@ export default function ClientLaunchpadPage() {
           Admission surface. Signing and verification remain terminal-bound.
         </p>
 
-        {/* SESSION (ONLY WHEN AUTHENTICATED) */}
         {authEmail ? (
           <div className="mt-6">
             <HeaderSessionPill email={authEmail} onSignOut={handleSignOut} />
           </div>
         ) : null}
 
-        {/* PREFLIGHT / INSTRUMENT STRIP */}
         <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <InstrumentChip label="Access" value={accessValue} tone={accessTone} />
-          <InstrumentChip
-            label="Provisioning"
-            value={provisionValue}
-            tone={provisionTone}
-          />
-          <InstrumentChip
-            label="Evidence Inbox"
-            value={evidenceValue}
-            tone={evidenceTone}
-          />
+          <InstrumentChip label="Provisioning" value={provisionValue} tone={provisionTone} />
+          <InstrumentChip label="Evidence Inbox" value={evidenceValue} tone={evidenceTone} />
         </div>
       </section>
 
-      {/* CONSOLE BODY: axial, not democratic */}
       <section className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-3">
-        {/* LEFT: Support surfaces (quiet) */}
         <div className="space-y-4">
           <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
             <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
@@ -398,7 +413,6 @@ export default function ClientLaunchpadPage() {
           </div>
         </div>
 
-        {/* CENTER: Gate / Handoff (dominant) */}
         <div className="space-y-4 lg:col-span-1">
           <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
             <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
@@ -420,7 +434,6 @@ export default function ClientLaunchpadPage() {
           />
         </div>
 
-        {/* RIGHT: Rules placard (law-like, quieter than the gate) */}
         <div className="space-y-4">
           <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
             <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
@@ -437,8 +450,7 @@ export default function ClientLaunchpadPage() {
                 Institutional Discipline
               </div>
               <div className="mt-2 text-sm text-zinc-300">
-                Gold indicates verified state and authority actions — never
-                decoration.
+                Gold indicates verified state and authority actions — never decoration.
               </div>
             </div>
           </div>
@@ -454,7 +466,6 @@ export default function ClientLaunchpadPage() {
         </div>
       </section>
 
-      {/* SECONDARY: Dormant surfaces (quiet, clearly secondary) */}
       <section className="mt-12">
         <div className="mb-4">
           <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
@@ -474,10 +485,8 @@ export default function ClientLaunchpadPage() {
         </div>
       </section>
 
-      {/* Footnote */}
       <div className="mt-14 text-center text-xs text-zinc-500">
-        Portal performs no execution. Sovereign verification and signing remain
-        terminal-bound.
+        Portal performs no execution. Sovereign verification and signing remain terminal-bound.
       </div>
     </main>
   );

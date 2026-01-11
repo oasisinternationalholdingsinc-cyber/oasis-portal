@@ -1,3 +1,4 @@
+// app/auth/set-password/page.tsx
 "use client";
 
 export const dynamic = "force-dynamic";
