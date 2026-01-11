@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
-const supabase = supabaseBrowser();
+// ✅ supabaseBrowser is already a client, NOT a function
+const supabase = supabaseBrowser;
 
 function getHashParams() {
   const hash = window.location.hash?.startsWith("#")
@@ -14,7 +15,6 @@ function getHashParams() {
   return {
     access_token: q.get("access_token"),
     refresh_token: q.get("refresh_token"),
-    token_hash: q.get("token_hash"),
     type: q.get("type"),
     app_id: q.get("app_id") || q.get("application_id"),
   };
