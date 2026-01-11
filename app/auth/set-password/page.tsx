@@ -166,6 +166,10 @@ export default function SetPasswordPage() {
   const [copied, setCopied] = useState<null | "short" | "full">(null);
 
   useEffect(() => {
+    // ✅ CRITICAL: prevent an existing operator session from contaminating invite flow
+    // If a different user is currently signed in, updateUser/getUser/rpc can bind to the wrong identity.
+    supabase.auth.signOut();
+
     setUrlErr(parseErrorFromUrl());
 
     const fromUrl = readAppIdFromUrlWithSource();
@@ -202,7 +206,7 @@ export default function SetPasswordPage() {
 
       if (!userId || !email) return setStatus("Session not established.");
 
-      let effectiveAppId =
+      const effectiveAppId =
         appId && isUuidLike(appId) ? appId : await resolveLatestAppIdByEmail(email);
 
       if (!effectiveAppId) return setStatus("Provisioning context unresolved.");
@@ -254,7 +258,8 @@ export default function SetPasswordPage() {
             {/* Context badges */}
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
               <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,214,128,.22)] bg-[rgba(255,214,128,.07)] px-3 py-1 text-[11px] tracking-[.18em] text-[rgba(255,214,128,.92)]">
-                APPLICATION <span className="text-white/90">{appIdOk ? shortId(appId!) : "—"}</span>
+                APPLICATION{" "}
+                <span className="text-white/90">{appIdOk ? shortId(appId!) : "—"}</span>
               </span>
 
               <span
