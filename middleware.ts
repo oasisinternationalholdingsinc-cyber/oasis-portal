@@ -4,6 +4,9 @@ import { createServerClient } from "@supabase/ssr";
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
+  // Only protect /client (and subpaths). Public portal stays public.
+  if (!req.nextUrl.pathname.startsWith("/client")) return res;
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -24,7 +27,6 @@ export async function middleware(req: NextRequest) {
   const { data } = await supabase.auth.getUser();
   const user = data.user;
 
-  // Protect /client and anything under it.
   if (!user) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
