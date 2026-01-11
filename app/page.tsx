@@ -51,7 +51,7 @@ const TILES: Tile[] = [
     href: "https://oasisintlholdings.com",
   },
 
-  // Client access is intentionally routed through /login
+  // ✅ STEP 1: Replace public “Ledger” entry point with Client Access → /login
   {
     eyebrow: "Client Portal",
     title: "Client Access",
@@ -97,9 +97,7 @@ export default function LaunchpadPage() {
               )}
             </div>
 
-            <p className="mt-3 text-sm leading-6 text-zinc-400">
-              {t.description}
-            </p>
+            <p className="mt-3 text-sm leading-6 text-zinc-400">{t.description}</p>
 
             <Link
               href={t.href}
