@@ -37,7 +37,7 @@ function SetPasswordInner() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const appId = sp.get("app_id"); // may be missing; backend fallback can resolve by email
+  const appId = sp.get("app_id"); // may be missing; backend can resolve by email
   const [step, setStep] = useState<Step>("BOOT");
   const [email, setEmail] = useState<string | null>(null);
 
@@ -93,16 +93,16 @@ function SetPasswordInner() {
     try {
       setStep("SAVING");
 
-      // 1) update password
+      // 1) Update password under authenticated session
       const { error: updErr } = await supabase.auth.updateUser({ password: pw1 });
       if (updErr) throw new Error(updErr.message);
 
-      // 2) refresh session token
+      // 2) Refresh session token
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) throw new Error("MISSING_SESSION_AFTER_PASSWORD_UPDATE");
 
-      // 3) call provisioning completion Edge Function
+      // 3) Call provisioning completion Edge Function
       const fnUrl = process.env.NEXT_PUBLIC_PROVISIONING_COMPLETE_URL;
       if (!fnUrl) throw new Error("MISSING_ENV:NEXT_PUBLIC_PROVISIONING_COMPLETE_URL");
 
@@ -112,7 +112,8 @@ function SetPasswordInner() {
       setOkMsg("Password set. Provisioning completed.");
       setStep("DONE");
 
-      setTimeout(() => router.replace("/"), 1200);
+      // ✅ Redirect to internal launchpad
+      setTimeout(() => router.replace("/client"), 900);
     } catch (e) {
       setStep("READY");
       setErr(e instanceof Error ? e.message : "UNKNOWN_ERROR");
@@ -225,7 +226,6 @@ function SetPasswordInner() {
 }
 
 export default function SetPasswordPage() {
-  // ✅ REQUIRED by Next.js when using useSearchParams()
   return (
     <Suspense
       fallback={
