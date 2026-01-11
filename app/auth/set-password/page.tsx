@@ -1,130 +1,232 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 
-const supabase = supabaseBrowser();
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { persistSession: true, autoRefreshToken: true } }
+);
 
-function isUuidLike(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    v
-  );
-}
+type Step = "BOOT" | "NO_SESSION" | "READY" | "SAVING" | "DONE" | "ERROR";
 
-async function resolveLatestAppIdByEmail(email: string) {
-  const { data } = await supabase
-    .from("onboarding_applications")
-    .select("id")
-    .ilike("applicant_email", email)
-    .order("submitted_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  return data?.id ?? null;
+async function postJson(url: string, body: unknown, accessToken: string) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${accessToken}`,
+      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (data && (data.error || data.message)) || `HTTP_${res.status}`;
+    throw new Error(msg);
+  }
+  return data;
 }
 
 export default function SetPasswordPage() {
-  const [pw, setPw] = useState("");
-  const [pw2, setPw2] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const router = useRouter();
+  const sp = useSearchParams();
 
-  const [appId, setAppId] = useState<string | null>(null);
+  const appId = sp.get("app_id"); // can be missing; backend can resolve by email if you implemented fallback
+  const [step, setStep] = useState<Step>("BOOT");
+  const [email, setEmail] = useState<string | null>(null);
+
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+
+  const [err, setErr] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+
+  const canSubmit = useMemo(() => {
+    if (step !== "READY") return false;
+    if (!pw1 || pw1.length < 10) return false; // firm but humane
+    if (pw1 !== pw2) return false;
+    return true;
+  }, [pw1, pw2, step]);
 
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const id =
-      url.searchParams.get("app_id") ||
-      sessionStorage.getItem("oasis_app_id");
+    let cancelled = false;
 
-    if (id) {
-      setAppId(id);
-      sessionStorage.setItem("oasis_app_id", id);
+    async function boot() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const s = data.session;
+
+        if (!s?.access_token) {
+          if (!cancelled) setStep("NO_SESSION");
+          return;
+        }
+
+        if (!cancelled) {
+          setEmail(s.user?.email ?? null);
+          setStep("READY");
+        }
+      } catch {
+        if (!cancelled) {
+          setStep("ERROR");
+          setErr("SESSION_BOOT_FAILED");
+        }
+      }
     }
+
+    boot();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const appIdOk = useMemo(() => !!(appId && isUuidLike(appId)), [appId]);
+  async function onSubmit() {
+    setErr(null);
+    setOkMsg(null);
 
-  const submit = async () => {
-    setStatus(null);
+    if (!canSubmit) return;
 
-    if (pw.length < 8) return setStatus("Password must be at least 8 characters.");
-    if (pw !== pw2) return setStatus("Passwords do not match.");
-
-    setBusy(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session.session) {
-        return setStatus("Session expired. Re-open the invite email.");
-      }
+      setStep("SAVING");
 
-      const { error: updErr } = await supabase.auth.updateUser({
-        password: pw,
-      });
-      if (updErr) return setStatus(updErr.message);
+      // 1) Update password under the authenticated session
+      const { error: updErr } = await supabase.auth.updateUser({ password: pw1 });
+      if (updErr) throw new Error(updErr.message);
 
-      const { data: userRes } = await supabase.auth.getUser();
-      const userId = userRes?.user?.id;
-      const email = userRes?.user?.email;
+      // 2) Get session token again (fresh)
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error("MISSING_SESSION_AFTER_PASSWORD_UPDATE");
 
-      if (!userId || !email) return setStatus("Session invalid.");
+      // 3) Call provisioning completion (Edge Function)
+      // IMPORTANT: Set this env in Vercel for portal:
+      // NEXT_PUBLIC_PROVISIONING_COMPLETE_URL=https://<project-ref>.functions.supabase.co/admissions-complete-provisioning
+      const fnUrl = process.env.NEXT_PUBLIC_PROVISIONING_COMPLETE_URL!;
+      const payload = appId ? { app_id: appId } : { app_id: null };
 
-      const effectiveAppId =
-        appIdOk && appId
-          ? appId
-          : await resolveLatestAppIdByEmail(email);
+      await postJson(fnUrl, payload, token);
 
-      if (!effectiveAppId)
-        return setStatus("Provisioning context unresolved.");
+      setOkMsg("Password set. Provisioning completed.");
+      setStep("DONE");
 
-      await supabase.rpc("admissions_complete_provisioning", {
-        p_application_id: effectiveAppId,
-        p_user_id: userId,
-      });
-
-      window.location.href = "/client";
-    } catch (e: any) {
-      setStatus(e?.message || "Failed to set password.");
-    } finally {
-      setBusy(false);
+      // Optional: route to portal home or sign-in
+      setTimeout(() => {
+        router.replace("/");
+      }, 1200);
+    } catch (e) {
+      setStep("READY");
+      setErr(e instanceof Error ? e.message : "UNKNOWN_ERROR");
     }
-  };
+  }
 
   return (
-    <main className="min-h-screen grid place-items-center px-6">
-      <div className="w-full max-w-md rounded-xl border border-white/10 bg-black/40 p-6">
-        <h1 className="mb-4 text-lg font-semibold text-white">
-          Create your password
-        </h1>
+    <div className="min-h-screen bg-[#05070d] text-white">
+      <div className="mx-auto max-w-3xl px-6 py-20">
+        <div className="mb-10">
+          <div className="text-xs tracking-[0.28em] text-[#d6b25e]">OASIS OS</div>
+          <div className="mt-1 text-[11px] tracking-[0.18em] text-white/55">
+            CREDENTIAL BINDING • SET PASSWORD
+          </div>
+        </div>
 
-        <input
-          type="password"
-          placeholder="New password"
-          value={pw}
-          onChange={(e) => setPw(e.target.value)}
-          className="mb-3 w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white"
-        />
+        {step === "NO_SESSION" ? (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+            <div className="text-lg text-white/90">Session not established</div>
+            <div className="mt-2 text-sm text-white/70">
+              Please return to your invite email and open the link directly. If the link is expired, request a new invite.
+            </div>
+            <div className="mt-5 text-xs tracking-[0.18em] text-white/40">
+              {email ? `Detected: ${email}` : "No session user detected."}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <div className="text-lg text-white/90">Set a secure password</div>
+                <div className="mt-1 text-sm text-white/70">
+                  This binds your invite session to an operator credential. Minimum 10 characters.
+                </div>
+                {email ? (
+                  <div className="mt-3 text-xs tracking-[0.18em] text-white/45">
+                    SESSION: <span className="text-white/70">{email}</span>
+                  </div>
+                ) : null}
+                {appId ? (
+                  <div className="mt-1 text-xs tracking-[0.18em] text-white/45">
+                    APPLICATION: <span className="text-white/70">{appId}</span>
+                  </div>
+                ) : (
+                  <div className="mt-1 text-xs tracking-[0.18em] text-white/45">
+                    APPLICATION: <span className="text-white/70">auto-resolve (email)</span>
+                  </div>
+                )}
+              </div>
 
-        <input
-          type="password"
-          placeholder="Confirm password"
-          value={pw2}
-          onChange={(e) => setPw2(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white"
-        />
+              <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs tracking-[0.24em] text-white/70">
+                AUTHORITY
+              </div>
+            </div>
 
-        <button
-          onClick={submit}
-          disabled={busy}
-          className="w-full rounded-lg bg-amber-300 py-2 font-semibold text-black disabled:opacity-60"
-        >
-          {busy ? "Saving…" : "Set password"}
-        </button>
+            <div className="mt-8 grid gap-4">
+              <label className="grid gap-2">
+                <span className="text-xs tracking-[0.18em] text-white/55">NEW PASSWORD</span>
+                <input
+                  type="password"
+                  value={pw1}
+                  onChange={(e) => setPw1(e.target.value)}
+                  className="h-11 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-white/90 outline-none focus:border-[#d6b25e]/40"
+                  placeholder="••••••••••"
+                  autoComplete="new-password"
+                />
+              </label>
 
-        {status && (
-          <div className="mt-4 text-sm text-white/80">{status}</div>
+              <label className="grid gap-2">
+                <span className="text-xs tracking-[0.18em] text-white/55">CONFIRM PASSWORD</span>
+                <input
+                  type="password"
+                  value={pw2}
+                  onChange={(e) => setPw2(e.target.value)}
+                  className="h-11 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-white/90 outline-none focus:border-[#d6b25e]/40"
+                  placeholder="••••••••••"
+                  autoComplete="new-password"
+                />
+              </label>
+
+              {err ? (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">
+                  {err}
+                </div>
+              ) : null}
+
+              {okMsg ? (
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100/90">
+                  {okMsg}
+                </div>
+              ) : null}
+
+              <button
+                onClick={onSubmit}
+                disabled={!canSubmit || step === "SAVING" || step === "DONE"}
+                className={[
+                  "mt-2 h-11 rounded-xl px-5 text-sm tracking-[0.16em] transition",
+                  "border border-[#d6b25e]/25 bg-[#d6b25e]/10 text-[#f5dea3]",
+                  "hover:border-[#d6b25e]/40 hover:bg-[#d6b25e]/15",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                ].join(" ")}
+              >
+                {step === "SAVING" ? "SEALING…" : step === "DONE" ? "PROVISIONED" : "SET PASSWORD"}
+              </button>
+
+              <div className="mt-8 text-xs tracking-[0.18em] text-white/40">
+                Oasis International Holdings • Institutional Operating System
+              </div>
+            </div>
+          </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }
