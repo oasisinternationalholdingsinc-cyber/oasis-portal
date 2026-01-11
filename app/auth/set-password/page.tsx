@@ -5,21 +5,8 @@ import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 const supabase = supabaseBrowser();
 
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
-}
-
-function useClock() {
-  const [now, setNow] = useState<Date>(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return now;
 }
 
 function useRailEngagement() {
@@ -115,8 +102,7 @@ async function resolveLatestAppIdByEmail(email: string): Promise<string | null> 
 }
 
 function extractRpcErrorMessage(err: any): string {
-  const msg = err?.message || "RPC_FAILED";
-  return msg;
+  return err?.message || "RPC_FAILED";
 }
 
 function shortId(id: string, head = 8, tail = 6) {
@@ -150,9 +136,24 @@ function sourceLabel(s: AppIdSource) {
   }
 }
 
+function sourceChipClass(s: AppIdSource) {
+  // Keep these subtle (enterprise). No neon.
+  switch (s) {
+    case "query":
+      return "border-[rgba(255,214,128,.22)] bg-[rgba(255,214,128,.08)] text-[rgba(255,214,128,.92)]";
+    case "resolved":
+      return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
+    case "hash":
+      return "border-sky-500/20 bg-sky-500/10 text-sky-200";
+    case "cached":
+      return "border-white/10 bg-white/5 text-zinc-200";
+    default:
+      return "border-white/10 bg-black/25 text-zinc-300";
+  }
+}
+
 export default function SetPasswordPage() {
   const railT = useRailEngagement();
-  const now = useClock();
 
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
@@ -206,7 +207,7 @@ export default function SetPasswordPage() {
 
       if (!effectiveAppId) return setStatus("Provisioning context unresolved.");
 
-      // UI-only: if we had to resolve, reflect it in the badge (no behavior change)
+      // UI-only: reflect resolved context in the badge (no behavior change)
       if (!appId || !isUuidLike(appId)) {
         setAppId(effectiveAppId);
         setAppIdSource("resolved");
@@ -228,36 +229,23 @@ export default function SetPasswordPage() {
     }
   };
 
-  const footerStyle = {
-    background: `rgba(2,6,23,${0.28 + railT * 0.55})`,
-    borderTopColor: `rgba(255,255,255,${0.06 + railT * 0.1})`,
-    backdropFilter: `blur(${10 + railT * 10}px)`,
+  const pageBg = {
+    // Keep this "quiet" so the host OS chrome doesn't feel doubled.
+    background: `radial-gradient(circle at top, rgba(2,12,36,.85) 0%, rgba(2,6,23,.92) 45%, rgba(0,0,0,.98) 100%)`,
   } as React.CSSProperties;
 
-  const clock = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+  const ambientStyle = {
+    // Subtle surface breathing as you scroll (keeps it alive without fighting host chrome)
+    boxShadow: `0 0 0 1px rgba(255,255,255,${0.04 + railT * 0.03}), 0 25px 90px rgba(0,0,0,${
+      0.55 + railT * 0.12
+    })`,
+  } as React.CSSProperties;
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#020c24_0%,_#020617_45%,_#000_100%)] text-zinc-100">
-      {/* OS-ish top bar (visual only; no wiring) */}
-      <div className="border-b border-white/10 bg-black/20 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="text-[11px] tracking-[.28em] uppercase text-[rgba(255,214,128,.85)]">
-              Oasis OS
-            </div>
-            <div className="text-[11px] uppercase tracking-[.28em] text-zinc-500">
-              Authority Terminal
-            </div>
-          </div>
-
-          <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] tracking-[.22em] text-zinc-300">
-            SYSTEM TIME&nbsp;&nbsp;{clock}
-          </div>
-        </div>
-      </div>
-
-      <main className="mx-auto flex min-h-[calc(100vh-64px)] max-w-6xl items-center justify-center px-6 py-10">
-        <div className="w-full max-w-[560px]">
+    <div className="min-h-screen text-zinc-100" style={pageBg}>
+      {/* CONTENT ONLY: no local header/footer (host OS already provides chrome) */}
+      <main className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-10">
+        <div className="w-full max-w-[640px]">
           <div className="mb-6 text-center">
             <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
               Oasis Portal
@@ -266,15 +254,30 @@ export default function SetPasswordPage() {
 
             {/* Context badges */}
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] tracking-[.18em] text-zinc-300">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,214,128,.22)] bg-[rgba(255,214,128,.07)] px-3 py-1 text-[11px] tracking-[.18em] text-[rgba(255,214,128,.92)]">
                 APPLICATION
-                <span className="text-white/90">
-                  {appIdOk ? shortId(appId!) : "—"}
-                </span>
+                <span className="text-white/90">{appIdOk ? shortId(appId!) : "—"}</span>
               </span>
 
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] tracking-[.18em] text-zinc-300">
+              <span
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] tracking-[.18em] ${sourceChipClass(
+                  appIdSource
+                )}`}
+              >
                 SOURCE <span className="text-white/90">{sourceLabel(appIdSource)}</span>
+              </span>
+
+              <span
+                className={`inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] tracking-[.18em] ${
+                  appIdOk ? "text-emerald-200" : "text-amber-200/90"
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    appIdOk ? "bg-emerald-400/80" : "bg-amber-300/80"
+                  }`}
+                />
+                {appIdOk ? "CONTEXT VERIFIED" : "CONTEXT MISSING"}
               </span>
 
               {appIdOk && (
@@ -290,6 +293,7 @@ export default function SetPasswordPage() {
                   >
                     COPY SHORT
                   </button>
+
                   <button
                     type="button"
                     onClick={async () => {
@@ -311,7 +315,6 @@ export default function SetPasswordPage() {
               </div>
             )}
 
-            {/* URL errors from auth redirect (if any) */}
             {urlErr?.error && (
               <div className="mt-3 text-xs text-amber-200/80">
                 {urlErr.error_description || urlErr.error}
@@ -319,7 +322,10 @@ export default function SetPasswordPage() {
             )}
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/25 p-6 shadow-[0_0_0_1px_rgba(255,255,255,.04),0_25px_80px_rgba(0,0,0,.55)]">
+          <div
+            className="rounded-2xl border border-white/10 bg-black/25 p-6"
+            style={ambientStyle}
+          >
             <label className="mb-2 block text-[11px] uppercase tracking-[.22em] text-zinc-500">
               New password
             </label>
@@ -360,13 +366,6 @@ export default function SetPasswordPage() {
           </div>
         </div>
       </main>
-
-      <div className="border-t border-white/10" style={footerStyle}>
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5 text-xs text-zinc-500">
-          <div>Oasis International Holdings • Institutional Operating System</div>
-          <div className="text-zinc-600">Authority Surface</div>
-        </div>
-      </div>
     </div>
   );
 }
