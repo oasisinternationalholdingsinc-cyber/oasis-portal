@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 
 // Public (no auth required)
 const PUBLIC_PATHS = [
-  "/", // ✅ IMPORTANT: public portal launchpad must NEVER require auth
+  "/", // ✅ public portal launchpad must NEVER require auth
   "/login",
   "/auth/callback",
   "/auth/set-password",
@@ -29,7 +29,7 @@ export async function middleware(req: NextRequest) {
   if (isPublicPath(pathname)) return NextResponse.next();
 
   // Prepare response so Supabase can set/refresh cookies
-  let res = NextResponse.next({
+  const res = NextResponse.next({
     request: { headers: req.headers },
   });
 
