@@ -4,13 +4,11 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { useSearchParams } from "next/navigation";
 
-type Step = "READY" | "AUTHING" | "ERROR";
+type Step = "READY" | "AUTHING";
 
 function LoginInner() {
-  const router = useRouter();
   const sp = useSearchParams();
 
   const nextPath = useMemo(() => {
@@ -21,63 +19,58 @@ function LoginInner() {
     return raw;
   }, [sp]);
 
-  const supabase = useMemo(() => {
-    return createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-  }, []);
-
   const [step, setStep] = useState<Step>("READY");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [err, setErr] = useState<string | null>(null);
 
+  const [err, setErr] = useState<string | null>(null);
   const [sessionDetected, setSessionDetected] = useState(false);
 
-  // Check session (NON-BLOCKING): show "Continue" if already authed
+  const disabled = step === "AUTHING";
+
+  // ✅ Cookie-truth session check (NO supabase browser session — avoids localStorage “phantom session”)
+  // If cookies already authorize, we’ll see a non-redirect response.
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const { data } = await supabase.auth.getSession();
+        const r = await fetch(nextPath, {
+          method: "GET",
+          credentials: "include",
+          redirect: "manual",
+          cache: "no-store",
+        });
+
         if (cancelled) return;
-        setSessionDetected(!!data.session?.user);
+
+        // If middleware redirects, browsers often return 307/302 here (manual redirect).
+        // If authorized, we’ll get 200-ish.
+        if (r.status >= 200 && r.status < 300) setSessionDetected(true);
+        else setSessionDetected(false);
       } catch {
-        // ignore
+        if (!cancelled) setSessionDetected(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [nextPath]);
 
-  function hardNavigate(to: string) {
-    // 1) try Next router
-    router.replace(to);
-
-    // 2) if something swallows navigation, hard jump after a short beat
-    setTimeout(() => {
-      try {
-        if (window.location.pathname !== to) {
-          window.location.assign(to);
-        }
-      } catch {
-        // ignore
-      }
-    }, 250);
+  function go(to: string) {
+    // ✅ Hard navigation ensures middleware runs with fresh cookies
+    window.location.assign(to);
   }
 
   async function onContinue() {
     setErr(null);
     setStep("AUTHING");
     try {
-      hardNavigate(nextPath);
+      go(nextPath);
     } finally {
-      // keep UI responsive even if navigation is slow
-      setTimeout(() => setStep("READY"), 300);
+      // If navigation is blocked by browser for any reason, don’t freeze UI
+      setTimeout(() => setStep("READY"), 400);
     }
   }
 
@@ -93,32 +86,31 @@ function LoginInner() {
     setStep("AUTHING");
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
+      const r = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
       });
 
-      if (error) {
-        setErr(error.message || "AUTH_FAILED");
+      const j = await r.json().catch(() => null);
+
+      if (!r.ok || !j?.ok) {
+        setErr(j?.details || j?.error || "AUTH_FAILED");
         return;
       }
 
-      // ensure cookie-based session exists for middleware
-      const { data: after } = await supabase.auth.getSession();
-      if (!after.session?.access_token) {
-        setErr("SESSION_NOT_ESTABLISHED");
-        return;
-      }
-
-      hardNavigate(nextPath);
+      // ✅ Cookies now exist → middleware will allow /client
+      go(nextPath);
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "UNKNOWN_ERROR");
     } finally {
-      setTimeout(() => setStep("READY"), 300);
+      setTimeout(() => setStep("READY"), 350);
     }
   }
-
-  const disabled = step === "AUTHING";
 
   return (
     <div className="min-h-screen bg-[#05070d] text-white">
@@ -150,7 +142,7 @@ function LoginInner() {
             </div>
           </div>
 
-          {/* Session Detected */}
+          {/* Session Detected (cookie-truth) */}
           {sessionDetected ? (
             <div className="mt-6 rounded-2xl border border-[#d6b25e]/20 bg-[#d6b25e]/10 px-5 py-4">
               <div className="text-[11px] tracking-[0.22em] text-[#f5dea3]">
