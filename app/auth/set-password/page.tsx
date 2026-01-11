@@ -86,9 +86,7 @@ function readAppIdFromUrlWithSource(): { appId: string | null; source: AppIdSour
   return { appId: null, source: "none" };
 }
 
-function readHashTokens():
-  | { access_token: string; refresh_token: string }
-  | null {
+function readHashTokens(): { access_token: string; refresh_token: string } | null {
   const hash = window.location.hash?.startsWith("#")
     ? window.location.hash.slice(1)
     : window.location.hash || "";
@@ -166,47 +164,54 @@ function sourceChipClass(s: AppIdSource) {
   }
 }
 
+/**
+ * Establish a Supabase session from whatever the email link contains.
+ * Supports:
+ *  - ?code=... (PKCE)
+ *  - ?token_hash=...&type=invite|recovery|magiclink
+ *  - #access_token=...&refresh_token=...
+ */
 async function establishSessionFromLink(): Promise<{ ok: boolean; reason?: string }> {
-  // 0) if a session already exists, keep it (but only if it exists)
+  // If a session already exists, keep it.
   const existing = await supabase.auth.getSession();
   if (existing.data?.session) return { ok: true };
 
   const url = new URL(window.location.href);
 
-  // 1) NEW FORMAT: ?code=...
+  // A) PKCE: ?code=...
   const code = url.searchParams.get("code");
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) return { ok: false, reason: error.message };
 
-    // remove code from URL (keep app_id)
+    // Clean URL: remove code only, keep app_id
     url.searchParams.delete("code");
     window.history.replaceState({}, "", url.toString());
     return { ok: true };
   }
 
-  // 2) COMMON FORMAT: ?token_hash=...&type=recovery|invite|magiclink
+  // B) OTP verify: ?token_hash=...&type=...
   const token_hash = url.searchParams.get("token_hash");
-  const type = (url.searchParams.get("type") || "") as any;
+  const type = (url.searchParams.get("type") || "").trim() as any;
   if (token_hash && type) {
     const { error } = await supabase.auth.verifyOtp({ type, token_hash });
     if (error) return { ok: false, reason: error.message };
 
-    // clean url
+    // Clean URL: remove otp params, keep app_id
     url.searchParams.delete("token_hash");
     url.searchParams.delete("type");
     window.history.replaceState({}, "", url.toString());
     return { ok: true };
   }
 
-  // 3) OLDER FORMAT: #access_token=...&refresh_token=...
+  // C) Implicit tokens in hash
   const hashTokens = readHashTokens();
   if (hashTokens) {
     const { error } = await supabase.auth.setSession(hashTokens);
     if (error) return { ok: false, reason: error.message };
 
-    // remove hash tokens from URL
-    window.history.replaceState({}, "", url.toString());
+    // Remove hash entirely, keep query
+    window.history.replaceState({}, "", url.origin + url.pathname + url.search);
     return { ok: true };
   }
 
@@ -247,11 +252,9 @@ export default function SetPasswordPage() {
         }
       }
 
-      // ✅ Establish session from whatever Supabase put in the email link
+      // Establish session on page load (from invite/reset link)
       const res = await establishSessionFromLink();
-      if (!res.ok) {
-        setStatus(res.reason || "Session not established.");
-      }
+      if (!res.ok) setStatus(res.reason || "Session not established.");
     })();
   }, []);
 
@@ -266,7 +269,7 @@ export default function SetPasswordPage() {
 
     setBusy(true);
     try {
-      // ensure session exists
+      // Ensure session exists (if link was opened correctly)
       const { data: sess } = await supabase.auth.getSession();
       if (!sess?.session) {
         return setStatus(
@@ -274,15 +277,17 @@ export default function SetPasswordPage() {
         );
       }
 
+      // Set password
       const { error: updErr } = await supabase.auth.updateUser({ password: pw });
       if (updErr) return setStatus(updErr.message);
 
+      // Resolve identity
       const { data } = await supabase.auth.getUser();
       const userId = data?.user?.id;
       const email = data?.user?.email;
-
       if (!userId || !email) return setStatus("Session not established.");
 
+      // Resolve app_id
       const effectiveAppId =
         appId && isUuidLike(appId) ? appId : await resolveLatestAppIdByEmail(email);
 
@@ -294,14 +299,14 @@ export default function SetPasswordPage() {
         sessionStorage.setItem("oasis_app_id", effectiveAppId);
       }
 
+      // Provision entity + memberships (RPC wiring unchanged)
       const { error: rpcErr } = await supabase.rpc("admissions_complete_provisioning", {
         p_application_id: effectiveAppId,
         p_user_id: userId,
       });
-
       if (rpcErr) return setStatus(extractRpcErrorMessage(rpcErr));
 
-      // ✅ INTERNAL client launchpad
+      // ✅ Route to INTERNAL client launchpad
       window.location.href = "/client";
     } catch (e: any) {
       setStatus(e?.message || "Failed to set password.");
@@ -325,7 +330,9 @@ export default function SetPasswordPage() {
       <main className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-10">
         <div className="w-full max-w-[640px]">
           <div className="mb-6 text-center">
-            <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">Oasis Portal</div>
+            <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
+              Oasis Portal
+            </div>
             <h1 className="mt-2 text-2xl font-semibold">Create your password</h1>
 
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
