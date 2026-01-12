@@ -1,10 +1,11 @@
 // app/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 function useClock() {
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
@@ -16,130 +17,155 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-export default function PublicAuthorityGateway() {
-  const now = useClock();
-  const clock = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(
-    now.getUTCSeconds()
-  )} UTC`;
+type Tile = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  href: string;
+  external?: boolean;
+  badge?: string;
+};
+
+function TileCard(t: Tile) {
+  const inner = (
+    <div className="og-card">
+      <div className="og-card-top">
+        <div>
+          <div className="og-eyebrow">{t.eyebrow}</div>
+          <div className="og-title">{t.title}</div>
+        </div>
+        {t.badge ? <div className="og-badge">{t.badge}</div> : null}
+      </div>
+
+      <div className="og-desc">{t.description}</div>
+
+      <div className="og-cta">
+        <span>Open</span>
+        <span className="og-arrow">→</span>
+      </div>
+    </div>
+  );
+
+  if (t.external) {
+    return (
+      <a href={t.href} target="_blank" rel="noreferrer" className="og-link">
+        {inner}
+      </a>
+    );
+  }
 
   return (
-    <div className="authority-frame">
-      {/* HEADER */}
-      <header className="authority-header">
-        <div className="left">
-          <div className="brand">OASIS OS</div>
-          <div className="sub">DIGITAL PARLIAMENT LEDGER</div>
-        </div>
+    <Link href={t.href} className="og-link">
+      {inner}
+    </Link>
+  );
+}
 
-        <div className="center">
-          <div className="clock">
-            <span className="label">SYSTEM TIME</span>
-            <span className="value">{clock}</span>
+export default function PublicAuthorityGateway() {
+  const now = useClock();
+  const clock = useMemo(() => {
+    return `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(
+      now.getUTCSeconds()
+    )} UTC`;
+  }, [now]);
+
+  const tiles: Tile[] = [
+    {
+      eyebrow: "Authority Terminal",
+      title: "Sign",
+      description:
+        "Execute authorized signing ceremonies on sovereign terminals. Signing occurs only on dedicated surfaces.",
+      href: "https://sign.oasisintlholdings.com/sign.html",
+      external: true,
+      badge: "Terminal",
+    },
+    {
+      eyebrow: "Authority Terminal",
+      title: "Verify",
+      description:
+        "Verify the authenticity and registration status of an official record using its ledger hash or envelope reference.",
+      href: "https://sign.oasisintlholdings.com/verify.html",
+      external: true,
+      badge: "Read-only",
+    },
+    {
+      eyebrow: "Authority Terminal",
+      title: "Certificate",
+      description:
+        "View or download an official certificate associated with a verified record.",
+      href: "https://sign.oasisintlholdings.com/certificate.html",
+      external: true,
+      badge: "Certified",
+    },
+    {
+      eyebrow: "Admissions Surface",
+      title: "Onboarding",
+      description:
+        "Begin formal onboarding into the Oasis governance ecosystem. Intake occurs on a separate admissions surface.",
+      href: "https://onboarding.oasisintlholdings.com",
+      external: true,
+      badge: "Intake",
+    },
+    {
+      eyebrow: "Client Portal",
+      title: "Client Access",
+      description:
+        "Authenticate to enter the private client launchpad. Admission-based access to institutional systems and document exchange.",
+      href: "/client",
+      badge: "Private",
+    },
+  ];
+
+  return (
+    <div className="oasis-gateway">
+      {/* ambient authority field */}
+      <div aria-hidden className="og-field og-field-a" />
+      <div aria-hidden className="og-field og-field-b" />
+      <div aria-hidden className="og-field og-field-c" />
+
+      <div className="og-frame">
+        <header className="og-header">
+          <div className="og-left">
+            <div className="og-brand">OASIS OS</div>
+            <div className="og-sub">DIGITAL PARLIAMENT LEDGER</div>
           </div>
-        </div>
 
-        <div className="right">
-          <span className="surface">AUTHORITY SURFACE</span>
-        </div>
-      </header>
+          <div className="og-center">
+            <div className="og-clock">
+              <div className="og-clock-label">SYSTEM TIME</div>
+              <div className="og-clock-value">{clock}</div>
+            </div>
+          </div>
 
-      {/* HERO */}
-      <main className="authority-main">
-        <section className="hero">
-          <h1>
-            Official access to verification, certificates, and onboarding.
-          </h1>
-          <p>
-            This gateway routes to sovereign authority surfaces. No records are
-            created here. Authority actions execute on dedicated terminals.
-            Client systems are accessed through the private portal.
-          </p>
-        </section>
+          <div className="og-right">AUTHORITY SURFACE</div>
+        </header>
 
-        {/* CARDS */}
-        <section className="grid">
-          <div className="card">
-            <div className="eyebrow">AUTHORITY TERMINAL</div>
-            <h3>Sign</h3>
+        <main className="og-main">
+          <section className="og-hero">
+            <h1>Official access to verification, certificates, and onboarding.</h1>
             <p>
-              Execute authorized signing ceremonies on sovereign terminals.
-              Signing occurs only on dedicated surfaces.
+              This gateway routes to sovereign authority surfaces. No records are created here.
+              Authority actions execute on dedicated terminals. Client systems are accessed
+              through the private portal.
             </p>
-            <a
-              href="https://sign.oasisintlholdings.com/sign.html"
-              target="_blank"
-              className="cta"
-            >
-              Open
-            </a>
-          </div>
+          </section>
 
-          <div className="card">
-            <div className="eyebrow">AUTHORITY TERMINAL</div>
-            <h3>Verify</h3>
-            <p>
-              Verify the authenticity and registration status of an official
-              record using its ledger hash or envelope reference.
-            </p>
-            <a
-              href="https://sign.oasisintlholdings.com/verify.html"
-              target="_blank"
-              className="cta"
-            >
-              Open
-            </a>
-          </div>
+          <section className="og-grid">
+            {tiles.map((t) => (
+              <TileCard key={t.title} {...t} />
+            ))}
+          </section>
 
-          <div className="card">
-            <div className="eyebrow">AUTHORITY TERMINAL</div>
-            <h3>Certificate</h3>
-            <p>
-              View or download an official certificate associated with a
-              verified record.
-            </p>
-            <a
-              href="https://sign.oasisintlholdings.com/certificate.html"
-              target="_blank"
-              className="cta"
-            >
-              Open
-            </a>
+          <div className="og-note">
+            This gateway performs no operations. Verification and certificates resolve on sovereign
+            surfaces.
           </div>
+        </main>
 
-          <div className="card">
-            <div className="eyebrow">ADMISSIONS SURFACE</div>
-            <h3>Onboarding</h3>
-            <p>
-              Begin formal onboarding into the Oasis governance ecosystem.
-              Intake occurs on a separate admissions surface.
-            </p>
-            <a
-              href="https://onboarding.oasisintlholdings.com"
-              target="_blank"
-              className="cta"
-            >
-              Open
-            </a>
-          </div>
-
-          <div className="card">
-            <div className="eyebrow">CLIENT PORTAL</div>
-            <h3>Client Access</h3>
-            <p>
-              Authenticate to enter the private client launchpad. Admission-based
-              access to institutional systems and document exchange.
-            </p>
-            <a href="/client" className="cta">
-              Open
-            </a>
-          </div>
-        </section>
-      </main>
-
-      {/* FOOTER */}
-      <footer className="authority-footer">
-        Oasis International Holdings · Institutional Operating System
-      </footer>
+        <footer className="og-footer">
+          Oasis International Holdings · Institutional Operating System
+        </footer>
+      </div>
     </div>
   );
 }
