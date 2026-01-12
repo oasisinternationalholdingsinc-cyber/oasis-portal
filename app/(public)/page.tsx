@@ -10,39 +10,59 @@ type Tile = {
   href: string;
   badge?: string;
   external?: boolean;
+  kind?: "terminal" | "public" | "private" | "authority";
 };
 
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
 
+function badgeTone(kind?: Tile["kind"]) {
+  switch (kind) {
+    case "terminal":
+      return "border-amber-300/20 bg-amber-950/12 text-amber-200";
+    case "authority":
+      return "border-amber-300/18 bg-black/30 text-amber-200";
+    case "private":
+      return "border-white/12 bg-white/5 text-zinc-200";
+    case "public":
+    default:
+      return "border-white/10 bg-black/25 text-zinc-300";
+  }
+}
+
 function TileCard(t: Tile) {
   const shell =
-    "group rounded-2xl border border-white/10 bg-black/25 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition";
+    "group rounded-3xl border border-white/10 bg-black/25 p-7 shadow-[0_26px_110px_rgba(0,0,0,0.55)] backdrop-blur transition";
   const hover =
-    "hover:border-amber-300/25 hover:bg-black/30 hover:shadow-[0_0_0_1px_rgba(250,204,21,0.14),0_22px_70px_rgba(0,0,0,0.65)]";
+    "hover:border-amber-300/22 hover:bg-black/30 hover:shadow-[0_0_0_1px_rgba(250,204,21,0.14),0_34px_130px_rgba(0,0,0,0.68)]";
 
   const content = (
     <div className={cx(shell, hover)}>
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.22em] text-amber-300/90">
+          <div className="text-[10px] uppercase tracking-[0.24em] text-amber-300/90">
             {t.eyebrow}
           </div>
-          <div className="mt-2 text-xl font-semibold text-zinc-100">{t.title}</div>
+          <div className="mt-2 text-2xl font-semibold text-zinc-100">{t.title}</div>
         </div>
 
         {t.badge ? (
-          <div className="rounded-full border border-amber-300/20 bg-amber-950/10 px-3 py-1 text-[10px] tracking-[0.22em] text-amber-200">
+          <div
+            className={cx(
+              "rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.22em]",
+              badgeTone(t.kind)
+            )}
+          >
             {t.badge}
           </div>
         ) : null}
       </div>
 
-      <p className="mt-3 text-sm leading-6 text-zinc-400">{t.description}</p>
+      <p className="mt-4 text-sm leading-6 text-zinc-400">{t.description}</p>
 
       <div className="mt-6 flex items-center gap-3 text-xs tracking-[0.18em] text-zinc-500">
-        <span className="font-mono text-zinc-300">{t.href}</span>
+        <span className="font-mono text-[11px] text-zinc-300">{t.href}</span>
         <span className="opacity-60">→</span>
       </div>
     </div>
@@ -67,6 +87,7 @@ export default function PublicLaunchpad() {
       href: "https://sign.oasisintlholdings.com/sign.html",
       badge: "Terminal",
       external: true,
+      kind: "terminal",
     },
     {
       eyebrow: "Public Verification",
@@ -76,6 +97,7 @@ export default function PublicLaunchpad() {
       href: "https://sign.oasisintlholdings.com/verify.html",
       badge: "Read-only",
       external: true,
+      kind: "terminal",
     },
     {
       eyebrow: "Public Receipt",
@@ -85,36 +107,41 @@ export default function PublicLaunchpad() {
       href: "https://sign.oasisintlholdings.com/certificate.html",
       badge: "Receipt",
       external: true,
+      kind: "terminal",
     },
     {
       eyebrow: "Admissions",
       title: "Apply for Access",
       description:
-        "Submit an onboarding application. This gateway routes triage → admission → provisioning.",
-      href: "/apply",
-      badge: "Public",
+        "Institutional intake is handled through the Onboarding Gateway. Submissions route triage → admission → provisioning.",
+      href: "https://onboarding.oasisintlholdings.com",
+      badge: "Intake",
+      external: true,
+      kind: "public",
     },
     {
       eyebrow: "Client Console",
       title: "Enter Client Launchpad",
       description:
-        "Private surface for admitted operators. If you have credentials, proceed to secure entry.",
+        "Private surface for admitted operators. Authentication is enforced on entry.",
       href: "/client",
       badge: "Private",
+      kind: "private",
     },
     {
-      eyebrow: "Institutional Access",
-      title: "Login",
+      eyebrow: "Authority",
+      title: "Authority Login",
       description:
-        "Credential terminal. Establishes a cookie-truth session for private access only.",
+        "Credential terminal for institutional operators. Not client-facing.",
       href: "/login",
-      badge: "Authority",
+      badge: "Internal",
+      kind: "authority",
     },
   ];
 
   return (
     <div className="relative">
-      {/* Subtle authority glow (PUBLIC, calm) */}
+      {/* Authority glow (PUBLIC, calm) */}
       <div
         aria-hidden
         className="pointer-events-none absolute -top-28 left-1/2 h-72 w-[48rem] -translate-x-1/2 rounded-full bg-amber-300/10 blur-3xl"
@@ -133,12 +160,10 @@ export default function PublicLaunchpad() {
           <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">
             Public Authority Gateway
           </div>
-          <h1 className="mt-3 text-3xl font-semibold text-zinc-100">
-            Oasis Portal
-          </h1>
+          <h1 className="mt-3 text-3xl font-semibold text-zinc-100">Oasis Portal</h1>
           <p className="mt-4 text-sm leading-6 text-zinc-400">
-            This is a public routing surface. It does not execute governance. It routes
-            to sovereign terminals (Sign / Verify / Certificate) and admissions intake.
+            This is a public routing surface. It does not execute governance. It routes to
+            sovereign terminals (Sign / Verify / Certificate) and institutional intake.
           </p>
 
           <div className="mt-7 rounded-2xl border border-white/10 bg-black/20 p-5">
@@ -158,8 +183,17 @@ export default function PublicLaunchpad() {
           ))}
         </section>
 
-        <div className="mt-12 text-xs tracking-[0.18em] text-zinc-500">
-          Oasis International Holdings • Institutional Operating System
+        {/* Holdings presence (comfort + legitimacy) */}
+        <div className="mt-12 rounded-2xl border border-white/10 bg-black/20 p-5">
+          <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+            Operated by
+          </div>
+          <div className="mt-2 text-sm text-zinc-300">
+            Oasis International Holdings • Institutional Operating System
+          </div>
+          <div className="mt-1 text-xs tracking-[0.18em] text-zinc-500">
+            Evidence over claims • Verification over persuasion
+          </div>
         </div>
       </div>
     </div>
