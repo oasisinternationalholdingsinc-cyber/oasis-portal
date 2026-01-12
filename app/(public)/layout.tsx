@@ -1,8 +1,10 @@
-// app/(public)/layout.tsx
 "use client";
 
+// app/(public)/layout.tsx
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -25,7 +27,7 @@ function useHeaderEngagement() {
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY || 0;
-      setT(clamp((y - 50) / 240, 0, 1));
+      setT(clamp((y - 120) / 200, 0, 1));
     };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -34,90 +36,97 @@ function useHeaderEngagement() {
   return t;
 }
 
+function cx(...xs: Array<string | false | null | undefined>) {
+  return xs.filter(Boolean).join(" ");
+}
+
+function NavPill({
+  href,
+  label,
+  active,
+}: {
+  href: string;
+  label: string;
+  active?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cx(
+        "rounded-full border px-3 py-2 text-[10px] uppercase tracking-[0.22em] transition",
+        active
+          ? "border-amber-300/30 bg-amber-950/20 text-amber-200 shadow-[0_0_0_1px_rgba(250,204,21,0.10)]"
+          : "border-white/10 bg-black/20 text-zinc-400 hover:border-amber-300/25 hover:text-zinc-200 hover:bg-black/30"
+      )}
+    >
+      {label}
+    </Link>
+  );
+}
+
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   const now = useClock();
   const ht = useHeaderEngagement();
+  const pathname = usePathname();
 
-  const clock = `${pad2(now.getUTCHours())}:${pad2(now.getUTCMinutes())}:${pad2(
-    now.getUTCSeconds()
-  )} UTC`;
+  const clock = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(
+    now.getSeconds()
+  )}`;
+
+  const rightLabel = useMemo(() => {
+    if (pathname?.startsWith("/login")) return "Authority Surface";
+    if (pathname?.startsWith("/client")) return "Private Surface";
+    return "Public Authority Gateway";
+  }, [pathname]);
 
   const headerStyle = {
-    background: `rgba(2,6,23,${0.18 + ht * 0.58})`,
-    borderBottomColor: `rgba(255,255,255,${0.05 + ht * 0.12})`,
-    backdropFilter: `blur(${14 + ht * 14}px)`,
+    background: `rgba(2,6,23,${0.35 + ht * 0.45})`,
+    borderBottomColor: `rgba(255,255,255,${0.06 + ht * 0.1})`,
+    backdropFilter: `blur(${10 + ht * 10}px)`,
   } as React.CSSProperties;
 
   return (
-    <div className="min-h-screen text-zinc-100">
-      {/* Deep OS field */}
-      <div
-        aria-hidden
-        className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_#071730_0%,_#020617_46%,_#000_100%)]"
-      />
-      {/* Gold veil */}
-      <div
-        aria-hidden
-        className="fixed inset-0 -z-10 opacity-70"
-        style={{
-          background:
-            "radial-gradient(920px 520px at 50% -10%, rgba(250,204,21,0.11), transparent 58%)",
-        }}
-      />
-      {/* Corner glows */}
-      <div
-        aria-hidden
-        className="fixed -z-10 left-[-180px] top-[90px] h-[560px] w-[560px] rounded-full bg-sky-400/10 blur-[90px]"
-      />
-      <div
-        aria-hidden
-        className="fixed -z-10 right-[-220px] top-[140px] h-[640px] w-[640px] rounded-full bg-indigo-400/10 blur-[110px]"
-      />
-
-      {/* Sticky control-plane */}
+    <div className="min-h-screen">
+      {/* HEADER */}
       <header className="sticky top-0 z-50 border-b" style={headerStyle}>
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div>
+        <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between gap-4">
+          <div className="min-w-[180px]">
             <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-amber-300">
               Oasis OS
             </div>
-            <div className="mt-0.5 text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-              Public Authority Gateway
+            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">
+              Digital Parliament Ledger
             </div>
           </div>
 
-          <div className="hidden sm:flex items-center gap-3">
-            <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 shadow-[0_14px_50px_rgba(0,0,0,0.55)]">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-                System Time
-              </div>
-              <div className="font-mono text-xs tabular-nums text-zinc-300">
-                {clock}
-              </div>
+          <div className="hidden md:flex items-center gap-2">
+            <NavPill href="/" label="Gateway" active={pathname === "/"} />
+            <NavPill href="/client" label="Client" active={pathname?.startsWith("/client")} />
+            <NavPill href="/login" label="Login" active={pathname?.startsWith("/login")} />
+          </div>
+
+          <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-center">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+              System Time
             </div>
-            <div className="rounded-full border border-amber-300/18 bg-amber-950/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-amber-200">
-              Gateway
+            <div className="font-mono text-xs tabular-nums text-zinc-300">
+              {clock}
             </div>
           </div>
 
-          <div className="text-right text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-            No execution
+          <div className="min-w-[180px] text-right text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+            {rightLabel}
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
+      {/* WORKSPACE */}
+      <main className="mx-auto max-w-6xl px-6 py-12">{children}</main>
 
-      {/* Dormant footer rail */}
-      <footer className="mt-10 border-t border-white/10 bg-black/20 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 text-xs text-zinc-500">
-          <div className="tracking-[0.18em] uppercase">Oasis International Holdings</div>
-          <div className="hidden sm:block text-[11px] text-zinc-600">
-            Sovereign terminals: Sign / Verify / Certificate
-          </div>
-          <div className="tracking-[0.18em] uppercase text-zinc-600">
-            Evidence over claims
-          </div>
+      {/* FOOTER */}
+      <footer className="border-t border-white/5">
+        <div className="mx-auto max-w-6xl px-6 py-8 text-center text-xs tracking-[0.18em] text-zinc-600">
+          Oasis International Holdings • Institutional Operating System
         </div>
       </footer>
     </div>

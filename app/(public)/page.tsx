@@ -1,9 +1,7 @@
-// app/(public)/page.tsx
 "use client";
 
+// app/(public)/page.tsx
 import Link from "next/link";
-
-type TileKind = "terminal" | "public" | "private" | "authority";
 
 type Tile = {
   eyebrow: string;
@@ -12,56 +10,33 @@ type Tile = {
   href: string;
   badge?: string;
   external?: boolean;
-  kind: TileKind;
   cta?: string;
-  subtle?: boolean;
 };
 
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
 
-function badgeTone(kind: TileKind) {
-  switch (kind) {
-    case "terminal":
-      return "border-amber-300/20 bg-amber-950/12 text-amber-200";
-    case "private":
-      return "border-white/12 bg-white/5 text-zinc-200";
-    case "authority":
-      return "border-amber-300/18 bg-black/30 text-amber-200";
-    case "public":
-    default:
-      return "border-white/10 bg-black/25 text-zinc-300";
-  }
-}
-
 function TileCard(t: Tile) {
-  const shell = cx(
-    "group rounded-3xl border bg-black/22 p-7 shadow-[0_26px_110px_rgba(0,0,0,0.55)] backdrop-blur transition",
-    t.subtle ? "border-white/8" : "border-white/10"
-  );
-
-  const hover = t.subtle
-    ? "hover:border-white/14 hover:bg-black/26"
-    : "hover:border-amber-300/22 hover:bg-black/28 hover:shadow-[0_0_0_1px_rgba(250,204,21,0.14),0_34px_130px_rgba(0,0,0,0.68)]";
+  const shell =
+    "group relative overflow-hidden rounded-3xl border border-white/10 bg-black/20 p-7 shadow-[0_28px_120px_rgba(0,0,0,0.55)] transition";
+  const hover =
+    "hover:border-amber-300/25 hover:bg-black/28 hover:shadow-[0_0_0_1px_rgba(250,204,21,0.12),0_34px_140px_rgba(0,0,0,0.70)]";
+  const glow =
+    "before:pointer-events-none before:absolute before:inset-0 before:opacity-0 before:transition before:duration-300 before:bg-[radial-gradient(circle_at_30%_10%,rgba(250,204,21,0.12),transparent_55%)] group-hover:before:opacity-100";
 
   const content = (
-    <div className={cx(shell, hover)}>
-      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+    <div className={cx(shell, hover, glow)}>
+      <div className="flex items-start justify-between gap-5">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.24em] text-amber-300/90">
+          <div className="text-[10px] uppercase tracking-[0.26em] text-amber-300/90">
             {t.eyebrow}
           </div>
           <div className="mt-2 text-2xl font-semibold text-zinc-100">{t.title}</div>
         </div>
 
         {t.badge ? (
-          <div
-            className={cx(
-              "rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.22em]",
-              badgeTone(t.kind)
-            )}
-          >
+          <div className="rounded-full border border-amber-300/20 bg-amber-950/10 px-3 py-1 text-[10px] tracking-[0.22em] text-amber-200">
             {t.badge}
           </div>
         ) : null}
@@ -69,9 +44,14 @@ function TileCard(t: Tile) {
 
       <p className="mt-4 text-sm leading-6 text-zinc-400">{t.description}</p>
 
-      <div className="mt-6 flex items-center gap-3 text-xs tracking-[0.18em] text-zinc-500">
-        <span className="text-zinc-300">{t.cta ?? "Open →"}</span>
-        <span className="opacity-60">→</span>
+      <div className="mt-6 flex items-center justify-between">
+        <div className="text-xs tracking-[0.18em] text-zinc-500">
+          {t.external ? "Sovereign terminal" : "Internal route"}
+        </div>
+
+        <div className="rounded-full border border-amber-300/20 bg-black/20 px-4 py-2 text-[11px] font-semibold tracking-[0.14em] text-amber-200 transition group-hover:border-amber-300/35 group-hover:bg-amber-950/20">
+          {t.cta ?? "OPEN"} →
+        </div>
       </div>
     </div>
   );
@@ -88,117 +68,98 @@ function TileCard(t: Tile) {
 export default function PublicLaunchpad() {
   const tiles: Tile[] = [
     {
-      eyebrow: "Sovereign Terminal",
+      eyebrow: "Authority Terminal",
       title: "Sign",
-      description:
-        "Execute signature-required records. This terminal is purpose-built for signing only.",
+      description: "Execute authorized signing ceremonies on sovereign terminals only.",
       href: "https://sign.oasisintlholdings.com/sign.html",
       badge: "Terminal",
       external: true,
-      kind: "terminal",
-      cta: "Open terminal",
+      cta: "OPEN TERMINAL",
     },
     {
-      eyebrow: "Public Verification",
+      eyebrow: "Authority Terminal",
       title: "Verify",
-      description:
-        "Verify an archived document by hash, envelope, or record reference. Read-only.",
+      description: "Verify authenticity and registration status of an official record.",
       href: "https://sign.oasisintlholdings.com/verify.html",
       badge: "Read-only",
       external: true,
-      kind: "terminal",
-      cta: "Open verification",
+      cta: "OPEN VERIFY",
     },
     {
-      eyebrow: "Public Receipt",
+      eyebrow: "Authority Terminal",
       title: "Certificate",
-      description:
-        "View an authoritative certificate for verified records. Immutable terminal output.",
+      description: "View or download an official certificate associated with a verified record.",
       href: "https://sign.oasisintlholdings.com/certificate.html",
-      badge: "Receipt",
+      badge: "Certified",
       external: true,
-      kind: "terminal",
-      cta: "Open certificate",
+      cta: "OPEN CERTIFICATE",
     },
     {
-      eyebrow: "Admissions",
-      title: "Apply for Access",
-      description:
-        "Institutional intake is handled through the Onboarding Gateway. Submissions route triage → admission → provisioning.",
+      eyebrow: "Admissions Surface",
+      title: "Onboarding",
+      description: "Begin formal onboarding into the Oasis governance ecosystem (intake → review → provisioning).",
       href: "https://onboarding.oasisintlholdings.com",
       badge: "Intake",
       external: true,
-      kind: "public",
-      cta: "Open onboarding gateway",
+      cta: "OPEN ONBOARDING",
     },
     {
-      eyebrow: "Client Console",
-      title: "Enter Client Launchpad",
-      description:
-        "Private surface for admitted operators. Authentication is enforced on entry.",
+      eyebrow: "Institution",
+      title: "Oasis International Holdings",
+      description: "Institutional boundary, governance authority, and public trust surface of the Oasis ecosystem.",
+      href: "https://oasisintlholdings.com",
+      badge: "Public",
+      external: true,
+      cta: "OPEN SITE",
+    },
+    {
+      eyebrow: "Client Portal",
+      title: "Client Access",
+      description: "Enter the private client launchpad. Authentication is enforced on entry.",
       href: "/client",
       badge: "Private",
-      kind: "private",
-      cta: "Enter",
+      cta: "ENTER",
     },
   ];
 
-  const authority: Tile = {
-    eyebrow: "Authority",
-    title: "Authority Login",
-    description:
-      "Credential terminal for institutional operators. Not client-facing.",
-    href: "/login",
-    badge: "Internal",
-    kind: "authority",
-    cta: "Authenticate",
-    subtle: true,
-  };
-
   return (
     <div className="relative">
-      <section className="max-w-3xl">
-        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-          Public Authority Gateway
-        </div>
-        <h1 className="mt-3 text-3xl font-semibold text-zinc-100">Oasis Portal</h1>
-        <p className="mt-4 text-sm leading-6 text-zinc-400">
-          This is a public routing surface. It does not execute governance. It routes to
-          sovereign terminals (Sign / Verify / Certificate) and institutional intake.
-        </p>
+      {/* Authority glow (calm) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-28 left-1/2 h-80 w-[56rem] -translate-x-1/2 rounded-full bg-amber-300/10 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-10 right-10 h-56 w-56 rounded-full bg-indigo-400/10 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-40 left-10 h-56 w-56 rounded-full bg-sky-400/10 blur-3xl"
+      />
 
-        <div className="mt-7 rounded-2xl border border-white/10 bg-black/20 p-5">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-            Policy
+      <div className="mx-auto max-w-6xl">
+        <section className="max-w-3xl">
+          <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-400">
+            Public Authority Gateway
           </div>
-          <div className="mt-2 text-sm text-zinc-300">
-            Public first. Private access requires credentials. Signing and verification remain
-            terminal-bound.
-          </div>
-        </div>
-      </section>
+          <h1 className="mt-3 text-4xl font-semibold text-zinc-100">
+            Official access to verification, certificates, and onboarding.
+          </h1>
+          <p className="mt-4 text-sm leading-6 text-zinc-400">
+            This gateway routes to sovereign authority surfaces. No records are created here.
+            Authority actions execute on dedicated terminals. Client systems are accessed through the private portal.
+          </p>
+        </section>
 
-      <section className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-2">
-        {tiles.map((t) => (
-          <TileCard key={t.title} {...t} />
-        ))}
-      </section>
+        <section className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-3">
+          {tiles.map((t) => (
+            <TileCard key={t.title} {...t} />
+          ))}
+        </section>
 
-      {/* Authority is present but de-emphasized */}
-      <section className="mt-6 max-w-3xl">
-        <TileCard {...authority} />
-      </section>
-
-      {/* Holdings presence (comfort + legitimacy) */}
-      <div className="mt-10 rounded-2xl border border-white/10 bg-black/20 p-5">
-        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-          Operated by
-        </div>
-        <div className="mt-2 text-sm text-zinc-300">
-          Oasis International Holdings • Institutional Operating System
-        </div>
-        <div className="mt-1 text-xs tracking-[0.18em] text-zinc-500">
-          Verification over persuasion • Evidence over claims
+        <div className="mt-10 text-center text-xs tracking-[0.18em] text-zinc-600">
+          This gateway performs no operations. Verification and certificates resolve on sovereign surfaces.
         </div>
       </div>
     </div>
