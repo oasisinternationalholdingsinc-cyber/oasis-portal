@@ -1,108 +1,58 @@
-"use client";
+// app/(public)/layout.tsx
+import type { ReactNode } from "react";
+import Link from "next/link";
 
-import "../globals.css";
-import type React from "react";
-import { useEffect, useState } from "react";
+export const dynamic = "force-static";
 
-/* ---------------- helpers ---------------- */
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function useClockUTC() {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return now;
-}
-
-function useHeaderEngagement() {
-  const [t, setT] = useState(0);
-  useEffect(() => {
-    const onScroll = () => {
-      const y = window.scrollY || 0;
-      setT(clamp((y - 80) / 180, 0, 1));
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-  return t;
-}
-
-/* ---------------- layout ---------------- */
-
-export default function PublicLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const now = useClockUTC();
-  const ht = useHeaderEngagement();
-
-  const clock = `${pad2(now.getUTCHours())}:${pad2(
-    now.getUTCMinutes()
-  )}:${pad2(now.getUTCSeconds())} UTC`;
-
-  const headerStyle: React.CSSProperties = {
-    background: `rgba(2,6,23,${0.32 + ht * 0.45})`,
-    borderBottomColor: `rgba(255,255,255,${0.06 + ht * 0.12})`,
-    backdropFilter: `blur(${10 + ht * 12}px)`,
-  };
-
+export default function PublicLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#020c24_0%,_#020617_45%,_#000_100%)] text-zinc-100">
-      {/* ================= HEADER ================= */}
-      <header
-        className="sticky top-0 z-50 border-b transition-colors"
-        style={headerStyle}
-      >
-        <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
-          {/* LEFT */}
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-amber-300">
-              Oasis OS
-            </div>
-            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-              Public Authority Gateway
-            </div>
-          </div>
-
-          {/* CENTER CLOCK */}
-          <div className="rounded-full border border-white/10 bg-black/25 px-4 py-2 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]">
-            <div className="text-[9px] uppercase tracking-[0.22em] text-zinc-500 text-center">
-              System Time
-            </div>
-            <div className="font-mono text-xs tabular-nums text-zinc-300 text-center">
-              {clock}
-            </div>
-          </div>
-
-          {/* RIGHT */}
-          <div className="text-right">
-            <div className="rounded-full border border-amber-300/20 bg-amber-950/10 px-3 py-1 text-[10px] tracking-[0.22em] text-amber-200">
-              PUBLIC SURFACE
-            </div>
-          </div>
+    <html lang="en">
+      <body className="min-h-screen bg-black text-zinc-100 antialiased">
+        {/* Ambient glow */}
+        <div className="pointer-events-none fixed inset-0 -z-10">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.12),transparent_60%)]" />
         </div>
-      </header>
 
-      {/* ================= WORKSPACE ================= */}
-      <main className="mx-auto max-w-6xl px-6 py-12">{children}</main>
+        {/* Top control bar */}
+        <header className="sticky top-0 z-50 border-b border-white/10 bg-black/70 backdrop-blur-xl">
+          <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
+            <Link
+              href="/"
+              className="text-sm font-semibold tracking-wide text-zinc-100 hover:text-white"
+            >
+              Oasis International Holdings
+            </Link>
 
-      {/* ================= FOOTER ================= */}
-      <footer className="border-t border-white/5">
-        <div className="mx-auto max-w-6xl px-6 py-5 text-center text-xs tracking-[0.18em] text-zinc-500">
-          Oasis International Holdings • Institutional Operating System
-        </div>
-      </footer>
-    </div>
+            <nav className="flex items-center gap-6 text-xs tracking-wide text-zinc-400">
+              <Link href="/" className="hover:text-white transition">
+                Home
+              </Link>
+              <Link href="/apply" className="hover:text-white transition">
+                Apply
+              </Link>
+              <a
+                href="https://portal.oasisintlholdings.com"
+                className="rounded-full border border-amber-400/40 px-4 py-1.5 text-amber-300 transition hover:border-amber-400 hover:bg-amber-400/10"
+              >
+                Public Authority Gateway
+              </a>
+            </nav>
+          </div>
+        </header>
+
+        {/* Main content */}
+        <main className="mx-auto max-w-7xl px-6 py-16">
+          {children}
+        </main>
+
+        {/* Footer */}
+        <footer className="border-t border-white/10 bg-black/60 backdrop-blur">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 text-xs text-zinc-500">
+            <span>© {new Date().getFullYear()} Oasis International Holdings</span>
+            <span className="tracking-wide">Public Institutional Surface</span>
+          </div>
+        </footer>
+      </body>
+    </html>
   );
 }
