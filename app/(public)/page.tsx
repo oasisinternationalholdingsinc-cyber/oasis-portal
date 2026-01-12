@@ -3,6 +3,8 @@
 
 import Link from "next/link";
 
+type TileKind = "terminal" | "public" | "private" | "authority";
+
 type Tile = {
   eyebrow: string;
   title: string;
@@ -10,21 +12,23 @@ type Tile = {
   href: string;
   badge?: string;
   external?: boolean;
-  kind?: "terminal" | "public" | "private" | "authority";
+  kind: TileKind;
+  cta?: string;
+  subtle?: boolean;
 };
 
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
 
-function badgeTone(kind?: Tile["kind"]) {
+function badgeTone(kind: TileKind) {
   switch (kind) {
     case "terminal":
       return "border-amber-300/20 bg-amber-950/12 text-amber-200";
-    case "authority":
-      return "border-amber-300/18 bg-black/30 text-amber-200";
     case "private":
       return "border-white/12 bg-white/5 text-zinc-200";
+    case "authority":
+      return "border-amber-300/18 bg-black/30 text-amber-200";
     case "public":
     default:
       return "border-white/10 bg-black/25 text-zinc-300";
@@ -32,10 +36,14 @@ function badgeTone(kind?: Tile["kind"]) {
 }
 
 function TileCard(t: Tile) {
-  const shell =
-    "group rounded-3xl border border-white/10 bg-black/25 p-7 shadow-[0_26px_110px_rgba(0,0,0,0.55)] backdrop-blur transition";
-  const hover =
-    "hover:border-amber-300/22 hover:bg-black/30 hover:shadow-[0_0_0_1px_rgba(250,204,21,0.14),0_34px_130px_rgba(0,0,0,0.68)]";
+  const shell = cx(
+    "group rounded-3xl border bg-black/22 p-7 shadow-[0_26px_110px_rgba(0,0,0,0.55)] backdrop-blur transition",
+    t.subtle ? "border-white/8" : "border-white/10"
+  );
+
+  const hover = t.subtle
+    ? "hover:border-white/14 hover:bg-black/26"
+    : "hover:border-amber-300/22 hover:bg-black/28 hover:shadow-[0_0_0_1px_rgba(250,204,21,0.14),0_34px_130px_rgba(0,0,0,0.68)]";
 
   const content = (
     <div className={cx(shell, hover)}>
@@ -62,7 +70,7 @@ function TileCard(t: Tile) {
       <p className="mt-4 text-sm leading-6 text-zinc-400">{t.description}</p>
 
       <div className="mt-6 flex items-center gap-3 text-xs tracking-[0.18em] text-zinc-500">
-        <span className="font-mono text-[11px] text-zinc-300">{t.href}</span>
+        <span className="text-zinc-300">{t.cta ?? "Open →"}</span>
         <span className="opacity-60">→</span>
       </div>
     </div>
@@ -88,6 +96,7 @@ export default function PublicLaunchpad() {
       badge: "Terminal",
       external: true,
       kind: "terminal",
+      cta: "Open terminal",
     },
     {
       eyebrow: "Public Verification",
@@ -98,6 +107,7 @@ export default function PublicLaunchpad() {
       badge: "Read-only",
       external: true,
       kind: "terminal",
+      cta: "Open verification",
     },
     {
       eyebrow: "Public Receipt",
@@ -108,6 +118,7 @@ export default function PublicLaunchpad() {
       badge: "Receipt",
       external: true,
       kind: "terminal",
+      cta: "Open certificate",
     },
     {
       eyebrow: "Admissions",
@@ -118,6 +129,7 @@ export default function PublicLaunchpad() {
       badge: "Intake",
       external: true,
       kind: "public",
+      cta: "Open onboarding gateway",
     },
     {
       eyebrow: "Client Console",
@@ -127,73 +139,66 @@ export default function PublicLaunchpad() {
       href: "/client",
       badge: "Private",
       kind: "private",
-    },
-    {
-      eyebrow: "Authority",
-      title: "Authority Login",
-      description:
-        "Credential terminal for institutional operators. Not client-facing.",
-      href: "/login",
-      badge: "Internal",
-      kind: "authority",
+      cta: "Enter",
     },
   ];
 
+  const authority: Tile = {
+    eyebrow: "Authority",
+    title: "Authority Login",
+    description:
+      "Credential terminal for institutional operators. Not client-facing.",
+    href: "/login",
+    badge: "Internal",
+    kind: "authority",
+    cta: "Authenticate",
+    subtle: true,
+  };
+
   return (
     <div className="relative">
-      {/* Authority glow (PUBLIC, calm) */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-28 left-1/2 h-72 w-[48rem] -translate-x-1/2 rounded-full bg-amber-300/10 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute top-10 right-10 h-56 w-56 rounded-full bg-indigo-400/10 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute top-40 left-10 h-56 w-56 rounded-full bg-sky-400/10 blur-3xl"
-      />
+      <section className="max-w-3xl">
+        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">
+          Public Authority Gateway
+        </div>
+        <h1 className="mt-3 text-3xl font-semibold text-zinc-100">Oasis Portal</h1>
+        <p className="mt-4 text-sm leading-6 text-zinc-400">
+          This is a public routing surface. It does not execute governance. It routes to
+          sovereign terminals (Sign / Verify / Certificate) and institutional intake.
+        </p>
 
-      <div className="mx-auto max-w-6xl px-6 py-12">
-        <section className="max-w-3xl">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-            Public Authority Gateway
-          </div>
-          <h1 className="mt-3 text-3xl font-semibold text-zinc-100">Oasis Portal</h1>
-          <p className="mt-4 text-sm leading-6 text-zinc-400">
-            This is a public routing surface. It does not execute governance. It routes to
-            sovereign terminals (Sign / Verify / Certificate) and institutional intake.
-          </p>
-
-          <div className="mt-7 rounded-2xl border border-white/10 bg-black/20 p-5">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-              Policy
-            </div>
-            <div className="mt-2 text-sm text-zinc-300">
-              Public first. Private access requires credentials. Signing and verification remain
-              terminal-bound.
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-2">
-          {tiles.map((t) => (
-            <TileCard key={t.title} {...t} />
-          ))}
-        </section>
-
-        {/* Holdings presence (comfort + legitimacy) */}
-        <div className="mt-12 rounded-2xl border border-white/10 bg-black/20 p-5">
+        <div className="mt-7 rounded-2xl border border-white/10 bg-black/20 p-5">
           <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-            Operated by
+            Policy
           </div>
           <div className="mt-2 text-sm text-zinc-300">
-            Oasis International Holdings • Institutional Operating System
+            Public first. Private access requires credentials. Signing and verification remain
+            terminal-bound.
           </div>
-          <div className="mt-1 text-xs tracking-[0.18em] text-zinc-500">
-            Evidence over claims • Verification over persuasion
-          </div>
+        </div>
+      </section>
+
+      <section className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-2">
+        {tiles.map((t) => (
+          <TileCard key={t.title} {...t} />
+        ))}
+      </section>
+
+      {/* Authority is present but de-emphasized */}
+      <section className="mt-6 max-w-3xl">
+        <TileCard {...authority} />
+      </section>
+
+      {/* Holdings presence (comfort + legitimacy) */}
+      <div className="mt-10 rounded-2xl border border-white/10 bg-black/20 p-5">
+        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+          Operated by
+        </div>
+        <div className="mt-2 text-sm text-zinc-300">
+          Oasis International Holdings • Institutional Operating System
+        </div>
+        <div className="mt-1 text-xs tracking-[0.18em] text-zinc-500">
+          Verification over persuasion • Evidence over claims
         </div>
       </div>
     </div>
