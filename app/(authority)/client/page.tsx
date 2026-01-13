@@ -323,15 +323,16 @@ export default function ClientLaunchpadPage() {
   const evidenceValue = authEmail ? "0 pending" : "Sign in required";
   const evidenceTone: "neutral" | "warn" = authEmail ? "neutral" : "warn";
 
+  // ✅ ONLY CHANGE: activate tile → route to /client/evidence (stub page)
   const primaryUpload: Tile = {
     eyebrow: "Evidence Exchange",
-    title: "Upload Documents",
+    title: "Submit Evidence",
     description:
       "Submit requested evidence and operational documents. Execution does not occur on this surface.",
-    href: "/client/upload",
+    href: "/client/evidence",
     badge: "Private",
-    cta: "Upload",
-    disabled: true,
+    cta: "Open",
+    disabled: false,
   };
 
   const secondaryTiles: Tile[] = [
