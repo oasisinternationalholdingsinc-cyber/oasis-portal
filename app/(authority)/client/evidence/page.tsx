@@ -71,6 +71,15 @@ function statusTone(s?: string | null) {
   return "neutral";
 }
 
+function taskKeyToEvidenceKind(taskKey: string): EvidenceRow["kind"] {
+  const k = (taskKey || "").toLowerCase();
+  if (k.includes("incorporation")) return "incorporation";
+  if (k.includes("address")) return "proof_of_address";
+  if (k.includes("id")) return "id_document";
+  if (k.includes("tax")) return "tax";
+  return "other";
+}
+
 function Chip({
   label,
   value,
@@ -82,9 +91,9 @@ function Chip({
 }) {
   const toneClass =
     tone === "good"
-      ? "border-amber-300/25 bg-amber-950/10 text-zinc-100"
+      ? "border-emerald-400/25 bg-emerald-950/10 text-zinc-100"
       : tone === "warn"
-      ? "border-red-500/25 bg-red-950/10 text-zinc-100"
+      ? "border-amber-300/25 bg-amber-950/10 text-zinc-100"
       : "border-white/10 bg-black/25 text-zinc-100";
 
   return (
@@ -97,47 +106,20 @@ function Chip({
   );
 }
 
-function safeFileName(name: string) {
-  // keep it boring + url-safe
-  return name
-    .trim()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-zA-Z0-9._-]/g, "");
-}
-
-function kindForTaskKey(taskKey: string): EvidenceRow["kind"] {
-  const k = (taskKey || "").toLowerCase();
-  if (k.includes("incorporation")) return "incorporation";
-  if (k.includes("id_document") || k.includes("identity")) return "id_document";
-  if (k.includes("proof_of_address") || k.includes("address"))
-    return "proof_of_address";
-  if (k.includes("tax")) return "tax";
-  return "other";
-}
-
-function evidenceKey(appId: string, taskKey: string) {
-  return `${appId}::${taskKey}`;
-}
-
 export default function ClientEvidencePage() {
   const sb = useMemo(() => supabase(), []);
   const [sessionReady, setSessionReady] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [uid, setUid] = useState<string | null>(null);
 
-  const [appIds, setAppIds] = useState<string[]>([]);
   const [tasks, setTasks] = useState<EvidenceTask[]>([]);
-  const [evidenceByTask, setEvidenceByTask] = useState<Record<string, EvidenceRow>>(
-    {}
-  );
-
+  const [evidence, setEvidence] = useState<EvidenceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  // ---- session bootstrap (no regressions) ----
   useEffect(() => {
     let mounted = true;
 
@@ -146,12 +128,12 @@ export default function ClientEvidencePage() {
         const { data } = await sb.auth.getUser();
         if (!mounted) return;
         setEmail(data.user?.email ?? null);
-        setUserId(data.user?.id ?? null);
+        setUid(data.user?.id ?? null);
         setSessionReady(true);
       } catch {
         if (!mounted) return;
         setEmail(null);
-        setUserId(null);
+        setUid(null);
         setSessionReady(true);
       }
     }
@@ -163,7 +145,7 @@ export default function ClientEvidencePage() {
     } = sb.auth.onAuthStateChange((_evt, session) => {
       if (!mounted) return;
       setEmail(session?.user?.email ?? null);
-      setUserId(session?.user?.id ?? null);
+      setUid(session?.user?.id ?? null);
     });
 
     return () => {
@@ -178,88 +160,45 @@ export default function ClientEvidencePage() {
 
     try {
       const { data: userData } = await sb.auth.getUser();
-      const u = userData.user;
-      if (!u?.id) {
-        setAppIds([]);
+      const userId = userData.user?.id;
+      if (!userId) {
         setTasks([]);
-        setEvidenceByTask({});
+        setEvidence([]);
         setLoading(false);
         return;
       }
 
-      // 1) find the client’s application(s)
-      // NOTE: no schema changes; uses applicant_email + primary_contact_user_id if present.
-      // If primary_contact_user_id is NULL in some rows, applicant_email still works.
-      const { data: apps, error: appsErr } = await sb
-        .from("onboarding_applications")
-        .select("id, applicant_email, primary_contact_user_id")
-        .or(`applicant_email.eq.${u.email},primary_contact_user_id.eq.${u.id}`)
-        .order("submitted_at", { ascending: false })
-        .limit(25);
-
-      if (appsErr) throw appsErr;
-
-      const ids = ((apps || []) as any[])
-        .map((r) => String(r.id))
-        .filter(Boolean);
-
-      setAppIds(ids);
-
-      if (ids.length === 0) {
-        setTasks([]);
-        setEvidenceByTask({});
-        setLoading(false);
-        return;
-      }
-
-      // 2) load tasks for those applications
-      const { data: trows, error: tasksErr } = await sb
+      const { data: tData, error: tErr } = await sb
         .from("onboarding_provisioning_tasks")
         .select(
           "id,application_id,task_key,title,notes,required,channels,due_at,status,created_at"
         )
-        .in("application_id", ids)
-        .order("required", { ascending: false })
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(50);
 
-      if (tasksErr) throw tasksErr;
+      if (tErr) throw tErr;
 
-      const tasksList = (trows as EvidenceTask[]) || [];
-      setTasks(tasksList);
+      const appIds = Array.from(
+        new Set(((tData as EvidenceTask[]) || []).map((t) => t.application_id))
+      );
 
-      // 3) load evidence rows for those applications and map them to tasks
-      const { data: erows, error: evErr } = await sb
-        .from("onboarding_evidence")
-        .select(
-          "id,application_id,kind,title,storage_bucket,storage_path,file_name,mime_type,size_bytes,uploaded_by,uploaded_at,is_verified,verified_by,verified_at,metadata"
-        )
-        .in("application_id", ids)
-        .order("uploaded_at", { ascending: false })
-        .limit(250);
+      let eData: EvidenceRow[] = [];
+      if (appIds.length > 0) {
+        const { data: ev, error: eErr } = await sb
+          .from("onboarding_evidence")
+          .select(
+            "id,application_id,kind,title,storage_bucket,storage_path,file_name,mime_type,size_bytes,uploaded_by,uploaded_at,is_verified,verified_by,verified_at,metadata"
+          )
+          .in("application_id", appIds)
+          .order("uploaded_at", { ascending: false })
+          .limit(200);
 
-      if (evErr) throw evErr;
-
-      const evMap: Record<string, EvidenceRow> = {};
-      const evList = (erows as EvidenceRow[]) || [];
-
-      // Match evidence to task by canonical path prefix: `${appId}/${taskKey}/...`
-      for (const ev of evList) {
-        const ap = ev.application_id;
-        if (!ap || !ev.storage_path) continue;
-
-        for (const t of tasksList) {
-          if (t.application_id !== ap) continue;
-          const prefix = `${ap}/${t.task_key}/`;
-          if (ev.storage_path.startsWith(prefix)) {
-            const k = evidenceKey(ap, t.task_key);
-            // keep the most recent (we ordered by uploaded_at desc already)
-            if (!evMap[k]) evMap[k] = ev;
-          }
-        }
+        if (eErr) throw eErr;
+        eData = (ev as EvidenceRow[]) || [];
       }
 
-      setEvidenceByTask(evMap);
+      setTasks((tData as EvidenceTask[]) || []);
+      setEvidence(eData);
       setLoading(false);
     } catch (e: any) {
       setErr(e?.message || "Failed to load evidence tasks");
@@ -268,68 +207,77 @@ export default function ClientEvidencePage() {
   }
 
   useEffect(() => {
-    if (!sessionReady) return;
-    loadAll();
+    if (sessionReady) loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionReady]);
 
   const pending = tasks.filter((t) => statusTone(t.status) === "neutral");
   const requiredPending = pending.filter((t) => !!t.required);
 
-  async function openEvidence(ev: EvidenceRow) {
-    try {
-      // signed URL so bucket can remain private
-      const { data, error } = await sb.storage
-        .from(ev.storage_bucket)
-        .createSignedUrl(ev.storage_path, 60); // 60s is enough to open
-      if (error) throw error;
-      if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-    } catch (e: any) {
-      setErr(e?.message || "Failed to open evidence");
+  const evidenceByTask = useMemo(() => {
+    // map evidence to a "best guess" task_key by parsing storage_path prefix:
+    // <application_id>/<task_key>/...
+    const m = new Map<string, EvidenceRow[]>();
+    for (const e of evidence) {
+      const parts = (e.storage_path || "").split("/");
+      const taskKey = parts.length >= 2 ? parts[1] : "";
+      const key = `${e.application_id}::${taskKey}`;
+      const arr = m.get(key) || [];
+      arr.push(e);
+      m.set(key, arr);
     }
-  }
+    return m;
+  }, [evidence]);
 
-  async function onPickFile(task: EvidenceTask, file: File) {
-    const k = evidenceKey(task.application_id, task.task_key);
-    setBusyKey(k);
+  async function handleUpload(t: EvidenceTask) {
+    const inp = fileInputs.current[t.id];
+    const f = inp?.files?.[0];
+    if (!f) return;
+
+    setBusyKey(t.id);
     setErr(null);
 
     try {
       const { data: userData } = await sb.auth.getUser();
-      const u = userData.user;
-      if (!u?.id) throw new Error("Session required");
+      const userId = userData.user?.id;
+      if (!userId) throw new Error("Session required");
 
-      const bucket = "onboarding";
-      const clean = safeFileName(file.name || "evidence");
-      const path = `${task.application_id}/${task.task_key}/${clean}`;
+      const safeName = f.name.replace(/[^\w.\-() ]+/g, "_");
+      const storageBucket = "onboarding";
+      const storagePath = `${t.application_id}/${t.task_key}/${safeName}`;
 
-      // 1) upload
-      const { error: upErr } = await sb.storage.from(bucket).upload(path, file, {
+      // 1) upload file to storage
+      const up = await sb.storage.from(storageBucket).upload(storagePath, f, {
         upsert: true,
-        contentType: file.type || undefined,
+        contentType: f.type || "application/octet-stream",
       });
-      if (upErr) throw upErr;
 
-      // 2) insert evidence record (submission == upload + row)
-      const insertRow = {
-        application_id: task.application_id,
-        kind: kindForTaskKey(task.task_key),
-        title: task.title,
-        storage_bucket: bucket,
-        storage_path: path,
-        file_name: clean,
-        mime_type: file.type || null,
-        size_bytes: file.size || null,
-        uploaded_by: u.id,
-        // uploaded_at default now()
-        // is_verified default false
-        // metadata default {}
-      };
+      if (up.error) throw up.error;
 
-      const { error: insErr } = await sb.from("onboarding_evidence").insert(insertRow);
+      // 2) insert evidence row
+      const kind = taskKeyToEvidenceKind(t.task_key);
+
+      const { error: insErr } = await sb.from("onboarding_evidence").insert({
+        application_id: t.application_id,
+        kind,
+        title: t.title,
+        storage_bucket: storageBucket,
+        storage_path: storagePath,
+        file_name: f.name,
+        mime_type: f.type || null,
+        size_bytes: f.size ?? null,
+        uploaded_by: userId,
+        metadata: {
+          task_key: t.task_key,
+          task_id: t.id,
+          client_email: email || null,
+        },
+      });
+
       if (insErr) throw insErr;
 
-      // reload only (keeps contract stable)
+      // clear input + refresh
+      if (inp) inp.value = "";
       await loadAll();
     } catch (e: any) {
       setErr(e?.message || "Upload failed");
@@ -407,16 +355,18 @@ export default function ClientEvidencePage() {
                   Items are generated by CI-Admissions via provisioning tasks.
                   Uploading a document submits it for review.
                 </div>
-                <div className="mt-2 text-[11px] text-zinc-500">
+                <div className="mt-2 text-xs text-zinc-500">
                   Applications in scope:{" "}
-                  <span className="text-zinc-300">{appIds.length}</span>
+                  <span className="text-zinc-300">
+                    {Array.from(new Set(tasks.map((t) => t.application_id)))
+                      .length || 0}
+                  </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  type="button"
-                  onClick={() => loadAll()}
+                  onClick={loadAll}
                   className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-amber-300/25 hover:bg-black/30"
                 >
                   Refresh
@@ -452,23 +402,19 @@ export default function ClientEvidencePage() {
                   const tone = statusTone(t.status);
                   const border =
                     tone === "good"
-                      ? "border-amber-300/20"
+                      ? "border-emerald-400/20"
                       : tone === "warn"
-                      ? "border-red-500/25"
+                      ? "border-amber-300/25"
                       : "border-white/10";
                   const bg =
                     tone === "good"
-                      ? "bg-amber-950/10"
+                      ? "bg-emerald-950/10"
                       : tone === "warn"
-                      ? "bg-red-950/10"
+                      ? "bg-amber-950/10"
                       : "bg-black/20";
 
-                  const k = evidenceKey(t.application_id, t.task_key);
-                  const ev = evidenceByTask[k];
-                  const uploading = busyKey === k;
-
-                  const evTone =
-                    ev?.is_verified ? "good" : ev ? "neutral" : "warn";
+                  const evKey = `${t.application_id}::${t.task_key}`;
+                  const evRows = evidenceByTask.get(evKey) || [];
 
                   return (
                     <div key={t.id} className={cx("rounded-2xl border p-5", border, bg)}>
@@ -477,14 +423,10 @@ export default function ClientEvidencePage() {
                           <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
                             {t.required ? "Required" : "Optional"} •{" "}
                             {(t.status || "PENDING").toUpperCase()}
-                            {ev ? " • SUBMITTED" : " • NOT SUBMITTED"}
-                            {ev?.is_verified ? " • VERIFIED" : ""}
                           </div>
-
                           <div className="mt-2 text-lg font-semibold text-zinc-100">
                             {t.title}
                           </div>
-
                           {t.notes ? (
                             <div className="mt-2 text-sm leading-6 text-zinc-400">
                               {t.notes}
@@ -501,115 +443,72 @@ export default function ClientEvidencePage() {
                         </div>
                       </div>
 
-                      {/* Evidence status panel */}
-                      <div
-                        className={cx(
-                          "mt-4 rounded-xl border p-4",
-                          evTone === "good"
-                            ? "border-amber-300/20 bg-amber-950/10"
-                            : evTone === "warn"
-                            ? "border-red-500/25 bg-red-950/10"
-                            : "border-white/10 bg-black/25"
-                        )}
-                      >
+                      <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
                             <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-                              Evidence
+                              Upload
                             </div>
-                            <div className="mt-2 text-sm text-zinc-300">
-                              {ev?.is_verified
-                                ? "Verified by authority."
-                                : ev
-                                ? "Submitted — pending verification."
-                                : "Not submitted yet."}
+                            <div className="mt-1 text-sm text-zinc-400">
+                              Choose a file, then submit. It will be recorded in the evidence ledger.
                             </div>
-                            {ev ? (
-                              <div className="mt-2 text-xs text-zinc-500">
-                                File:{" "}
-                                <span className="text-zinc-300">
-                                  {ev.file_name || ev.storage_path}
-                                </span>
-                                {" • "}Uploaded:{" "}
-                                <span className="text-zinc-300">
-                                  {fmtTs(ev.uploaded_at)}
-                                </span>
-                              </div>
-                            ) : null}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2">
-                            {ev ? (
-                              <button
-                                type="button"
-                                onClick={() => openEvidence(ev)}
-                                className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-amber-300/25 hover:bg-black/30"
-                              >
-                                Open
-                              </button>
-                            ) : null}
-
-                            {/* Upload button: visible when missing, and still available as Replace when present (until verified) */}
                             <input
                               ref={(el) => {
-                                fileInputRefs.current[k] = el;
+                                fileInputs.current[t.id] = el;
                               }}
                               type="file"
-                              className="hidden"
-                              accept="application/pdf,image/*"
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                // reset input so same file can be re-selected
-                                e.currentTarget.value = "";
-                                if (!f) return;
-                                onPickFile(t, f);
-                              }}
+                              className="block w-[260px] text-xs text-zinc-300 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-zinc-100 hover:file:bg-white/15"
                             />
-
                             <button
-                              type="button"
-                              disabled={uploading || !!ev?.is_verified}
-                              onClick={() => fileInputRefs.current[k]?.click()}
+                              onClick={() => handleUpload(t)}
+                              disabled={busyKey === t.id}
                               className={cx(
                                 "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition",
-                                ev?.is_verified
-                                  ? "cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500"
-                                  : "bg-amber-300 text-black hover:bg-amber-200",
-                                uploading ? "opacity-70" : ""
+                                busyKey === t.id
+                                  ? "cursor-not-allowed bg-white/5 text-zinc-500"
+                                  : "bg-amber-300 text-black hover:bg-amber-200"
                               )}
-                              title={
-                                ev?.is_verified
-                                  ? "Verified evidence is locked"
-                                  : ev
-                                  ? "Replace / upload a newer document"
-                                  : "Upload evidence"
-                              }
                             >
-                              {uploading
-                                ? "Uploading…"
-                                : ev?.is_verified
-                                ? "Locked"
-                                : ev
-                                ? "Replace"
-                                : "Upload Evidence"}
+                              {busyKey === t.id ? "Submitting…" : "Submit Evidence"}
                             </button>
                           </div>
                         </div>
 
-                        <div className="mt-3 text-[11px] text-zinc-500">
-                          Submission = upload + registry entry in{" "}
-                          <span className="text-zinc-300">onboarding_evidence</span>.
-                        </div>
-                      </div>
-
-                      {/* Quiet footnote (keeps OS calm) */}
-                      <div className="mt-3 text-[11px] text-zinc-600">
-                        Uploads are stored in{" "}
-                        <span className="text-zinc-400">onboarding</span> bucket
-                        under:{" "}
-                        <span className="text-zinc-400">
-                          {t.application_id}/{t.task_key}/
-                        </span>
+                        {evRows.length > 0 ? (
+                          <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                              Submitted
+                            </div>
+                            <div className="mt-2 space-y-2">
+                              {evRows.slice(0, 3).map((e) => (
+                                <div
+                                  key={e.id}
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2"
+                                >
+                                  <div className="text-sm text-zinc-200">
+                                    {e.file_name || e.title || "Evidence"}
+                                    <span className="ml-2 text-xs text-zinc-500">
+                                      ({e.kind})
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-zinc-500">
+                                    {fmtTs(e.uploaded_at)} •{" "}
+                                    <span className={e.is_verified ? "text-emerald-300" : "text-amber-200"}>
+                                      {e.is_verified ? "Verified" : "Pending review"}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-4 text-xs text-zinc-500">
+                            No evidence submitted for this request yet.
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
